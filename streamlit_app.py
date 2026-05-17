@@ -703,3 +703,81 @@ with tab_history:
                         if st.button("🗑️ 刪除", key=f"del_{m['id']}", use_container_width=True):
                             db.delete_meeting(m["id"], user["id"])
                             st.rerun()
+
+                    # === 🤖 AI 進階分析（每個 meeting）===
+                    st.markdown("**🤖 AI 進階分析**")
+                    h_col_t, h_col_s = st.columns(2)
+
+                    # --- Translate ---
+                    with h_col_t:
+                        target_label = st.selectbox(
+                            "翻譯為",
+                            options=list(ai.TRANSLATE_TARGETS.values()),
+                            key=f"h_tr_target_{m['id']}",
+                            label_visibility="collapsed",
+                        )
+                        if st.button(
+                            "🌐 翻譯紀要",
+                            key=f"h_btn_tr_{m['id']}",
+                            use_container_width=True,
+                        ):
+                            target_code = next(
+                                (k for k, v in ai.TRANSLATE_TARGETS.items()
+                                 if v == target_label),
+                                "en",
+                            )
+                            with st.spinner(f"翻譯成 {target_label}..."):
+                                try:
+                                    translated = ai.translate(full["summary"], target_code)
+                                    st.session_state[f"h_tr_{m['id']}"] = translated
+                                    st.session_state[f"h_tr_lang_{m['id']}"] = target_label
+                                except Exception as e:
+                                    st.error(f"翻譯失敗：{e}")
+
+                    # --- Sentiment ---
+                    with h_col_s:
+                        st.markdown(
+                            "<div style='height:38px;display:flex;align-items:center;"
+                            "color:#64748b;font-size:0.82rem;'>"
+                            "🎭 分析會議語氣 + 風險"
+                            "</div>",
+                            unsafe_allow_html=True,
+                        )
+                        if st.button(
+                            "🎭 語氣分析",
+                            key=f"h_btn_sent_{m['id']}",
+                            use_container_width=True,
+                        ):
+                            with st.spinner("分析中..."):
+                                try:
+                                    sent = ai.analyze_sentiment(full["summary"])
+                                    st.session_state[f"h_sent_{m['id']}"] = sent
+                                except Exception as e:
+                                    st.error(f"分析失敗：{e}")
+
+                    # --- 顯示翻譯結果 ---
+                    if st.session_state.get(f"h_tr_{m['id']}"):
+                        lang_label = st.session_state.get(
+                            f"h_tr_lang_{m['id']}", "翻譯"
+                        )
+                        with st.expander(f"🌐 {lang_label} 譯本", expanded=True):
+                            st.markdown(st.session_state[f"h_tr_{m['id']}"])
+                            st.download_button(
+                                "📥 下載譯本",
+                                st.session_state[f"h_tr_{m['id']}"],
+                                file_name=f"{base_name}_translated.md",
+                                mime="text/markdown",
+                                key=f"h_dl_tr_{m['id']}",
+                            )
+
+                    # --- 顯示語氣分析結果 ---
+                    if st.session_state.get(f"h_sent_{m['id']}"):
+                        with st.expander("🎭 語氣分析報告", expanded=True):
+                            st.markdown(st.session_state[f"h_sent_{m['id']}"])
+                            st.download_button(
+                                "📥 下載語氣報告",
+                                st.session_state[f"h_sent_{m['id']}"],
+                                file_name=f"{base_name}_sentiment.md",
+                                mime="text/markdown",
+                                key=f"h_dl_sent_{m['id']}",
+                            )
