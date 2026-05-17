@@ -132,13 +132,32 @@ st.markdown("""
         color: #1e66f5;
     }
 
+    /* === Aggressive: hide ALL Streamlit chrome === */
+    header[data-testid="stHeader"] {
+        display: none !important;
+        height: 0 !important;
+    }
+    div[data-testid="stToolbar"] { display: none !important; }
+    footer { display: none !important; }
+    #MainMenu { visibility: hidden; display: none !important; }
+    [data-testid="stDecoration"] { display: none !important; }
+    .stApp > header { display: none !important; }
+
+    /* Remove top padding from app container */
+    .main .block-container,
+    [data-testid="stAppViewBlockContainer"] {
+        padding-top: 0.5rem !important;
+        padding-bottom: 0.5rem !important;
+    }
+
     /* Misc */
     .stAlert { border-radius: 10px; font-size: 0.9rem; }
-    div[data-testid="stToolbar"] { display: none; }
-    footer { display: none; }
-    #MainMenu { visibility: hidden; }
-    div[data-testid="stTabs"] { margin-top: 0.3rem; }
+    div[data-testid="stTabs"] { margin-top: 0 !important; }
     div[data-testid="stForm"] { border: none; padding: 0; }
+
+    /* All vertical blocks tighter */
+    [data-testid="stVerticalBlock"] { gap: 0.4rem !important; }
+    .element-container { margin: 0 !important; padding: 0 !important; }
 
     /* Main content max-width (when sidebar展開) */
     .main .block-container { max-width: 900px; }
