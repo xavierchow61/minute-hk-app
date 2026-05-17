@@ -46,6 +46,35 @@ def list_meetings(user_id: str, limit: int = 50) -> list[dict]:
     return result.data or []
 
 
+def search_meetings(user_id: str, query: str, limit: int = 100) -> list[dict]:
+    """
+    搜尋過往會議：match client、project、summary、transcript 任何一個 field。
+    Case-insensitive。
+    """
+    if not query.strip():
+        return list_meetings(user_id, limit)
+
+    sb = get_supabase()
+    pattern = f"%{query.strip()}%"
+    # Supabase or_ syntax: 用 PostgREST 嘅 or= filter
+    or_filter = (
+        f"client.ilike.{pattern},"
+        f"project.ilike.{pattern},"
+        f"summary.ilike.{pattern},"
+        f"transcript.ilike.{pattern}"
+    )
+    result = (
+        sb.table("meetings")
+        .select("id, created_at, client, project, duration_seconds, summary")
+        .eq("user_id", user_id)
+        .or_(or_filter)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return result.data or []
+
+
 def get_meeting(meeting_id: str, user_id: str) -> dict | None:
     sb = get_supabase()
     result = (

@@ -623,20 +623,41 @@ with tab_new:
                     key="dl_sentiment",
                 )
 
-# ============ Tab 2: History ============
+# ============ Tab 2: History (with Search) ============
 with tab_history:
-    meetings = db.list_meetings(user["id"], limit=50)
+    # 🔍 Search bar
+    search_query = st.text_input(
+        "搜尋",
+        placeholder="🔍 搜尋客戶、項目、紀要內容、文字稿...（按 Enter）",
+        label_visibility="collapsed",
+        key="search_query",
+    )
+
+    if search_query:
+        meetings = db.search_meetings(user["id"], search_query, limit=100)
+        if meetings:
+            st.caption(f"🔍 搜「**{search_query}**」: 揾到 **{len(meetings)}** 個會議")
+        else:
+            st.warning(f"冇 meeting match「{search_query}」")
+            st.stop()
+    else:
+        meetings = db.list_meetings(user["id"], limit=50)
+        if meetings:
+            st.caption(f"📚 共 {len(meetings)} 個 meeting（最近 50 個）")
+
     if not meetings:
         st.info("仲未有任何會議紀錄。上面 tab 上傳第一個錄音啦！")
     else:
-        st.caption(f"共 {len(meetings)} 個 meeting")
         for m in meetings:
             date = m["created_at"][:16].replace("T", " ")
             client = m.get("client") or "—"
             project = m.get("project") or "—"
             duration_min = (m.get("duration_seconds") or 0) / 60
 
-            with st.expander(f"📅 {date} · {client} / {project} · {duration_min:.1f} 分鐘"):
+            # 顯示時 highlight match
+            title = f"📅 {date} · {client} / {project} · {duration_min:.1f} 分鐘"
+
+            with st.expander(title):
                 full = db.get_meeting(m["id"], user["id"])
                 if full:
                     st.markdown(full["summary"])
