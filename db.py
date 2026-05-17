@@ -1,5 +1,5 @@
 """Supabase DB queries for meetings + usage tracking"""
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import streamlit as st
 from auth import get_supabase
 
@@ -46,32 +46,42 @@ def list_meetings(user_id: str, limit: int = 50) -> list[dict]:
     return result.data or []
 
 
-def search_meetings(user_id: str, query: str, limit: int = 100) -> list[dict]:
+def search_meetings(
+    user_id: str,
+    query: str = "",
+    date_from: date | None = None,
+    date_to: date | None = None,
+    limit: int = 100,
+) -> list[dict]:
     """
-    搜尋過往會議：match client、project、summary、transcript 任何一個 field。
-    Case-insensitive。
+    搜尋過往會議：
+      - 文字 query → match client / project / summary / transcript
+      - date_from / date_to → 日期範圍 (inclusive)
     """
-    if not query.strip():
-        return list_meetings(user_id, limit)
-
     sb = get_supabase()
-    pattern = f"%{query.strip()}%"
-    # Supabase or_ syntax: 用 PostgREST 嘅 or= filter
-    or_filter = (
-        f"client.ilike.{pattern},"
-        f"project.ilike.{pattern},"
-        f"summary.ilike.{pattern},"
-        f"transcript.ilike.{pattern}"
-    )
-    result = (
+    q = (
         sb.table("meetings")
         .select("id, created_at, client, project, duration_seconds, summary")
         .eq("user_id", user_id)
-        .or_(or_filter)
-        .order("created_at", desc=True)
-        .limit(limit)
-        .execute()
     )
+
+    if query and query.strip():
+        pattern = f"%{query.strip()}%"
+        q = q.or_(
+            f"client.ilike.{pattern},"
+            f"project.ilike.{pattern},"
+            f"summary.ilike.{pattern},"
+            f"transcript.ilike.{pattern}"
+        )
+
+    if date_from:
+        q = q.gte("created_at", datetime.combine(date_from, datetime.min.time()).isoformat())
+    if date_to:
+        # Include the whole "to" day
+        end = datetime.combine(date_to, datetime.min.time()) + timedelta(days=1)
+        q = q.lt("created_at", end.isoformat())
+
+    result = q.order("created_at", desc=True).limit(limit).execute()
     return result.data or []
 
 

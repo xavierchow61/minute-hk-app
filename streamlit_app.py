@@ -623,22 +623,62 @@ with tab_new:
                     key="dl_sentiment",
                 )
 
-# ============ Tab 2: History (with Search) ============
+# ============ Tab 2: History (with Search + Date Filter) ============
 with tab_history:
-    # 🔍 Search bar
-    search_query = st.text_input(
-        "搜尋",
-        placeholder="🔍 搜尋客戶、項目、紀要內容、文字稿...（按 Enter）",
-        label_visibility="collapsed",
-        key="search_query",
-    )
+    # 🔍 Compact filter row: Search (60%) | From (20%) | To (20%)
+    f_col_q, f_col_from, f_col_to = st.columns([3, 1, 1])
 
-    if search_query:
-        meetings = db.search_meetings(user["id"], search_query, limit=100)
+    with f_col_q:
+        search_query = st.text_input(
+            "搜尋",
+            placeholder="🔍 搜尋客戶、項目、紀要內容、文字稿...",
+            label_visibility="collapsed",
+            key="search_query",
+        )
+
+    with f_col_from:
+        date_from = st.date_input(
+            "📅 由",
+            value=None,
+            key="search_date_from",
+            format="YYYY-MM-DD",
+            label_visibility="collapsed",
+        )
+
+    with f_col_to:
+        date_to = st.date_input(
+            "📅 到",
+            value=None,
+            key="search_date_to",
+            format="YYYY-MM-DD",
+            label_visibility="collapsed",
+        )
+
+    # Determine if any filter active
+    has_filter = bool(search_query) or date_from is not None or date_to is not None
+
+    if has_filter:
+        meetings = db.search_meetings(
+            user["id"],
+            query=search_query,
+            date_from=date_from,
+            date_to=date_to,
+            limit=100,
+        )
+        # 建 filter description
+        filter_parts = []
+        if search_query:
+            filter_parts.append(f"搜「**{search_query}**」")
+        if date_from:
+            filter_parts.append(f"由 **{date_from}**")
+        if date_to:
+            filter_parts.append(f"到 **{date_to}**")
+        filter_desc = " · ".join(filter_parts)
+
         if meetings:
-            st.caption(f"🔍 搜「**{search_query}**」: 揾到 **{len(meetings)}** 個會議")
+            st.caption(f"🔍 {filter_desc} · 揾到 **{len(meetings)}** 個會議")
         else:
-            st.warning(f"冇 meeting match「{search_query}」")
+            st.warning(f"🔍 {filter_desc} · 冇 meeting match")
             st.stop()
     else:
         meetings = db.list_meetings(user["id"], limit=50)
