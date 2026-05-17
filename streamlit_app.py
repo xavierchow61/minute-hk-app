@@ -42,13 +42,50 @@ st.set_page_config(
 # ============ Style - professional + compact ============
 st.markdown("""
 <style>
-    /* Layout */
+    /* Layout - compact (no scroll on entry) */
     .main .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 2rem;
+        padding-top: 1rem;
+        padding-bottom: 1rem;
         max-width: 800px;
     }
     .stApp { background: #fafbfc; }
+
+    /* Tighter spacing */
+    .element-container { margin-bottom: 0.3rem !important; }
+    [data-testid="stVerticalBlock"] > div { gap: 0.5rem; }
+
+    /* Compact file uploader */
+    [data-testid="stFileUploaderDropzone"] {
+        padding: 0.6rem 1rem !important;
+        min-height: 60px !important;
+    }
+    [data-testid="stFileUploaderDropzoneInstructions"] {
+        font-size: 0.8rem;
+    }
+    [data-testid="stFileUploaderDropzoneInstructions"] > div > small {
+        font-size: 0.72rem;
+    }
+
+    /* Compact text inputs */
+    .stTextInput input {
+        padding: 0.4rem 0.7rem !important;
+        font-size: 0.9rem;
+    }
+    .stTextInput label {
+        font-size: 0.78rem !important;
+        margin-bottom: 0.1rem !important;
+    }
+
+    /* Compact tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0;
+        padding: 0;
+    }
+    .stTabs [data-baseweb="tab"] {
+        padding: 0.4rem 1rem;
+        font-size: 0.9rem;
+    }
+    .stTabs [data-baseweb="tab-panel"] { padding-top: 0.5rem; }
 
     /* Headings — smaller, more professional */
     h1 {
@@ -171,40 +208,44 @@ st.markdown("""
     .badge-pro { background: #ecfdf5; color: #047857; }
     .badge-team { background: #fef3c7; color: #92400e; }
 
-    /* User info top bar (主畫面) */
+    /* User info top bar (compact, 一行) */
     .user-bar {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 0.8rem 1.2rem;
+        padding: 0.45rem 1rem;
         background: white;
         border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        margin-bottom: 1.2rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        border-radius: 10px;
+        margin-bottom: 0.6rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+        gap: 1rem;
+        flex-wrap: wrap;
     }
-    .user-bar-left { display: flex; flex-direction: column; gap: 4px; }
+    .user-bar-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     .user-bar-logo {
-        font-size: 1.15rem;
+        font-size: 1rem;
         font-weight: 700;
         color: #1e293b;
+        white-space: nowrap;
     }
     .user-bar-logo span { color: #1e66f5; }
     .user-bar-usage {
-        font-size: 0.78rem;
+        font-size: 0.72rem;
         color: #64748b;
+        white-space: nowrap;
     }
     .user-bar-usage strong { color: #1e293b; }
-    .user-bar-right { text-align: right; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+    .user-bar-right { display: flex; align-items: center; gap: 8px; }
     .user-bar-email {
-        font-size: 0.85rem;
+        font-size: 0.78rem;
         color: #475569;
     }
     .user-bar-badge {
         display: inline-block;
-        padding: 2px 10px;
-        border-radius: 10px;
-        font-size: 0.72rem;
+        padding: 1px 8px;
+        border-radius: 8px;
+        font-size: 0.68rem;
         font-weight: 700;
     }
     .badge-free { background: #eff6ff; color: #1e66f5; }
@@ -382,13 +423,13 @@ tab_new, tab_history = st.tabs(["🎙️ 新會議", "📚 過往會議"])
 
 # ============ Tab 1: New Meeting ============
 with tab_new:
-    st.markdown("### 處理新會議")
-
     col1, col2 = st.columns(2)
     with col1:
-        client_name = st.text_input("客戶", placeholder="ABC Limited", label_visibility="visible")
+        client_name = st.text_input("客戶", placeholder="ABC Limited",
+                                    label_visibility="collapsed")
     with col2:
-        project_name = st.text_input("項目", placeholder="2026 audit", label_visibility="visible")
+        project_name = st.text_input("項目", placeholder="2026 audit",
+                                     label_visibility="collapsed")
 
     uploaded = st.file_uploader(
         "上傳會議錄音",
@@ -494,8 +535,6 @@ with tab_new:
 
 # ============ Tab 2: History ============
 with tab_history:
-    st.markdown("### 過往會議")
-
     meetings = db.list_meetings(user["id"], limit=50)
     if not meetings:
         st.info("仲未有任何會議紀錄。上面 tab 上傳第一個錄音啦！")
