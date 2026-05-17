@@ -1,4 +1,4 @@
-"""Gemini transcribe + summarize for cloud (one API does both)"""
+"""Gemini transcribe + summarize + translate + sentiment for cloud"""
 import io
 import tempfile
 import time
@@ -10,6 +10,16 @@ from google.genai import types
 
 GEMINI_MODEL = "gemini-2.5-flash"
 INLINE_MAX_BYTES = 18 * 1024 * 1024   # < 20MB Gemini inline limit, leave headroom
+
+# 翻譯支援嘅語言
+TRANSLATE_TARGETS = {
+    "en": "English",
+    "zh-Hans": "简体中文",
+    "ja": "日本語",
+    "ko": "한국어",
+    "th": "ภาษาไทย",
+    "ms": "Bahasa Melayu",
+}
 
 
 def _client():
@@ -145,3 +155,88 @@ def process_audio(audio_bytes: bytes, mime_type: str,
 
     finally:
         tmp_path.unlink(missing_ok=True)
+
+
+# ============================================================
+# 🌐 翻譯 (Translation)
+# ============================================================
+TRANSLATE_PROMPT = """請將以下會議紀要翻譯成 {target_name}。
+
+要求：
+1. 保留原本嘅 Markdown 格式（headings、tables、bullet points）
+2. 商務 / 專業用語翻譯要準確
+3. 人名、公司名、項目代號保持原文（唔好譯）
+4. 日期、數字、貨幣保留原樣
+5. 自然流暢，唔好直譯
+
+原文 (廣東話 / 中英夾雜):
+{summary}
+
+只輸出翻譯結果，唔需要其他說明。"""
+
+
+def translate(summary_md: str, target_code: str) -> str:
+    """翻譯會議紀要"""
+    target_name = TRANSLATE_TARGETS.get(target_code, target_code)
+    client = _client()
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=TRANSLATE_PROMPT.format(
+            target_name=target_name,
+            summary=summary_md,
+        ),
+        config=types.GenerateContentConfig(
+            temperature=0.3,
+            max_output_tokens=8192,
+        ),
+    )
+    return response.text
+
+
+# ============================================================
+# 🎭 語氣分析 (Sentiment / Tone Analysis)
+# ============================================================
+SENTIMENT_PROMPT = """你係資深商業心理顧問。請根據以下會議紀要，分析會議嘅語氣同氣氛。
+
+用書面繁體中文回答，格式如下：
+
+## 🎭 語氣分析報告
+
+### 📊 整體氣氛
+- **氛圍**: （友好 / 中性 / 緊張 / 衝突 / 焦慮）
+- **能量**: （高 / 中 / 低）
+- **建設性**: （正面 / 中性 / 負面）
+
+### 👤 對方語氣
+- 客戶 / 與會者對你嘅態度
+- 有冇明顯嘅 frustration / 抱怨
+- 有冇暗示嘅紅旗 (hidden complaints)
+- 對方最在意嘅事項
+
+### 📈 機會 vs 風險
+- ✅ 正面信號（potential upsell, satisfaction, trust）
+- ⚠️ 風險信號（churn risk, dissatisfaction, scope creep）
+
+### 🎯 跟進建議
+- 即時 follow-up 嘅 action items
+- 需要特別小心嘅地方
+- 建議下次溝通嘅 tone
+
+---
+
+會議紀要:
+{summary}"""
+
+
+def analyze_sentiment(summary_md: str) -> str:
+    """分析會議語氣 / 氣氛"""
+    client = _client()
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=SENTIMENT_PROMPT.format(summary=summary_md),
+        config=types.GenerateContentConfig(
+            temperature=0.4,
+            max_output_tokens=4096,
+        ),
+    )
+    return response.text

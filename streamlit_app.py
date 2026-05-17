@@ -496,6 +496,10 @@ with tab_new:
 
                         st.session_state.last_summary = result["summary"]
                         st.session_state.last_meeting_name = client_name or "會議"
+                        # 新 meeting → reset 之前嘅翻譯/語氣 cache
+                        st.session_state.pop("last_translation", None)
+                        st.session_state.pop("last_translation_lang", None)
+                        st.session_state.pop("last_sentiment", None)
 
                     except Exception as e:
                         err_msg = str(e)
@@ -507,7 +511,7 @@ with tab_new:
                         with st.expander("🔍 技術詳情"):
                             st.exception(e)
 
-    # 顯示最後一次嘅 summary + download buttons
+    # 顯示最後一次嘅 summary + download buttons + translate + sentiment
     if st.session_state.get("last_summary"):
         st.divider()
         st.markdown("#### 📝 會議紀要")
@@ -551,6 +555,73 @@ with tab_new:
                 )
             except Exception as e:
                 st.button("📕 PDF (錯)", disabled=True, use_container_width=True, help=str(e))
+
+        # === 🌐 翻譯 + 🎭 語氣分析 ===
+        st.markdown("##### 🤖 AI 進階分析")
+
+        col_t, col_s = st.columns(2)
+
+        # --- Translate ---
+        with col_t:
+            target_label = st.selectbox(
+                "🌐 翻譯紀要",
+                options=list(ai.TRANSLATE_TARGETS.values()),
+                key="translate_target",
+                label_visibility="collapsed",
+            )
+            if st.button("🌐 翻譯", use_container_width=True, key="btn_translate"):
+                # 揾返 target code
+                target_code = next(
+                    (k for k, v in ai.TRANSLATE_TARGETS.items() if v == target_label),
+                    "en"
+                )
+                with st.spinner(f"翻譯成 {target_label}..."):
+                    try:
+                        translated = ai.translate(st.session_state.last_summary, target_code)
+                        st.session_state.last_translation = translated
+                        st.session_state.last_translation_lang = target_label
+                    except Exception as e:
+                        st.error(f"翻譯失敗：{e}")
+
+        # --- Sentiment ---
+        with col_s:
+            st.markdown(
+                "<div style='height:38px;display:flex;align-items:center;color:#64748b;font-size:0.85rem;'>"
+                "🎭 分析會議語氣 + 風險信號"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+            if st.button("🎭 語氣分析", use_container_width=True, key="btn_sentiment"):
+                with st.spinner("AI 分析中..."):
+                    try:
+                        sentiment = ai.analyze_sentiment(st.session_state.last_summary)
+                        st.session_state.last_sentiment = sentiment
+                    except Exception as e:
+                        st.error(f"分析失敗：{e}")
+
+        # 顯示翻譯結果
+        if st.session_state.get("last_translation"):
+            with st.expander(f"🌐 {st.session_state.get('last_translation_lang', '翻譯')} 譯本", expanded=True):
+                st.markdown(st.session_state.last_translation)
+                st.download_button(
+                    "📥 下載譯本 (Markdown)",
+                    st.session_state.last_translation,
+                    file_name=f"{base_name}_translated.md",
+                    mime="text/markdown",
+                    key="dl_translated",
+                )
+
+        # 顯示語氣分析結果
+        if st.session_state.get("last_sentiment"):
+            with st.expander("🎭 語氣分析報告", expanded=True):
+                st.markdown(st.session_state.last_sentiment)
+                st.download_button(
+                    "📥 下載語氣報告 (Markdown)",
+                    st.session_state.last_sentiment,
+                    file_name=f"{base_name}_sentiment.md",
+                    mime="text/markdown",
+                    key="dl_sentiment",
+                )
 
 # ============ Tab 2: History ============
 with tab_history:
