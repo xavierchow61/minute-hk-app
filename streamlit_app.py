@@ -1,4 +1,5 @@
 """Minute.hk Cloud Web App - Streamlit + Supabase + Gemini + Stripe"""
+import random
 import streamlit as st
 
 import ai
@@ -6,6 +7,26 @@ import auth
 import cloud_exporters
 import cloud_stripe
 import db
+
+
+def _new_captcha():
+    """Generate new math captcha question"""
+    st.session_state.captcha_a = random.randint(1, 9)
+    st.session_state.captcha_b = random.randint(1, 9)
+    st.session_state.captcha_op = random.choice(["+", "-"])
+
+
+def _check_captcha(answer: str) -> bool:
+    """Verify captcha answer"""
+    try:
+        ans_int = int(answer.strip())
+    except (ValueError, AttributeError):
+        return False
+    a = st.session_state.get("captcha_a", 0)
+    b = st.session_state.get("captcha_b", 0)
+    op = st.session_state.get("captcha_op", "+")
+    expected = a + b if op == "+" else a - b
+    return ans_int == expected
 
 # ============ Page Config ============
 st.set_page_config(
@@ -154,6 +175,10 @@ if not auth.is_logged_in():
                         st.error(msg)
 
     with tab_signup:
+        # Init captcha (一次性 per session)
+        if "captcha_a" not in st.session_state:
+            _new_captcha()
+
         with st.form("signup_form"):
             email = st.text_input("Email", placeholder="you@example.com",
                                   key="su_email", label_visibility="collapsed")
@@ -161,20 +186,35 @@ if not auth.is_logged_in():
                                      key="su_pass", label_visibility="collapsed")
             password2 = st.text_input("Confirm", type="password", placeholder="確認密碼",
                                       key="su_pass2", label_visibility="collapsed")
+            # 🤖 Math captcha 防 bot
+            a = st.session_state.captcha_a
+            b = st.session_state.captcha_b
+            op = st.session_state.captcha_op
+            captcha_ans = st.text_input(
+                "驗證碼",
+                placeholder=f"🤖 防 bot 驗證：{a} {op} {b} = ?",
+                key="captcha_input",
+                label_visibility="collapsed",
+            )
             submit = st.form_submit_button("✨ 免費註冊", type="primary", use_container_width=True)
             if submit:
                 if not email or not password:
                     st.error("請填 email 同密碼")
                 elif password != password2:
                     st.error("兩次密碼唔同")
+                elif not _check_captcha(captcha_ans):
+                    st.error(f"驗證碼錯誤。{a} {op} {b} = ?")
+                    _new_captcha()
                 else:
                     ok, msg = auth.signup(email, password)
                     if ok:
                         st.success(msg)
+                        _new_captcha()  # Refresh captcha
                         if "正在登入" in msg:
                             st.rerun()
                     else:
                         st.error(msg)
+                        _new_captcha()
 
     with tab_reset:
         with st.form("reset_form"):

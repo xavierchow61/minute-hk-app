@@ -2,6 +2,62 @@
 import streamlit as st
 from supabase import Client, create_client
 
+# Disposable email domains - 防 bot 用 temp email 開咗一大堆 account
+# Source: https://github.com/disposable-email-domains/disposable-email-domains (subset)
+DISPOSABLE_DOMAINS = {
+    "10minutemail.com", "10minutemail.net", "20minutemail.com",
+    "anonymbox.com", "bccto.me", "bigprofessor.so", "binkmail.com",
+    "burnermail.io", "byom.de", "cuvox.de", "deadaddress.com",
+    "deadspam.com", "discardmail.com", "disposable.email",
+    "disposableinbox.com", "dispostable.com", "dontreg.com",
+    "easytrashmail.com", "emailondeck.com", "emailtemporanea.com",
+    "etranquil.com", "fakeinbox.com", "fakemailgenerator.com",
+    "fakemail.fr", "fakeinformation.com", "filzmail.com",
+    "freemail.ms", "getnada.com", "ghosttexter.de",
+    "goemailgo.com", "guerrillamail.com", "guerrillamail.de",
+    "guerrillamail.net", "guerrillamail.org", "guerrillamailblock.com",
+    "harakirimail.com", "hidemail.de", "hidzz.com",
+    "incognitomail.com", "incognitomail.org", "inboxalias.com",
+    "jetable.org", "junkemailfilter.com", "klzlk.com",
+    "kurzepost.de", "mail-temp.com", "mail-temporaire.fr",
+    "mail-tester.com", "mailcatch.com", "maildrop.cc",
+    "maildx.com", "mailexpire.com", "mailforspam.com",
+    "mailimate.com", "mailinator.com", "mailinator.net",
+    "mailinator.org", "mailinator2.com", "mailme.lv",
+    "mailmetrash.com", "mailnesia.com", "mailnull.com",
+    "mailtrash.net", "mintemail.com", "moakt.com",
+    "mt2014.com", "mt2015.com", "mytrashmail.com",
+    "neverbox.com", "no-spam.ws", "nobulk.com",
+    "noclickemail.com", "notmailinator.com", "nowmymail.com",
+    "objectmail.com", "obobbo.com", "odaymail.com",
+    "onewaymail.com", "owlpic.com", "pookmail.com",
+    "rcpt.at", "recode.me", "rmqkr.net",
+    "rppkn.com", "sharklasers.com", "shieldedmail.com",
+    "shieldemail.com", "shortmail.net", "sneakemail.com",
+    "snkmail.com", "spambox.us", "spamfree24.org",
+    "spamgourmet.com", "spamspot.com", "tempemail.com",
+    "tempemail.net", "tempemailaddress.com", "tempinbox.co.uk",
+    "tempinbox.com", "tempmail.com", "tempmail.email",
+    "tempmail.net", "tempmail2.com", "tempmaildemand.com",
+    "tempmailer.com", "tempmailer.de", "tempomail.fr",
+    "temporaryemail.net", "temporaryemail.us", "temporaryforwarding.com",
+    "throwam.com", "throwaway.email", "throwawayemailaddresses.com",
+    "throwawaymail.com", "trashinbox.com", "trashmail.at",
+    "trashmail.com", "trashmail.de", "trashmail.io",
+    "trashmail.me", "trashmail.net", "trashmail.org",
+    "trashmailer.com", "trashymail.com", "tyldd.com",
+    "vidchart.com", "wegwerfadresse.de", "wegwerfemail.de",
+    "wetrainbayarea.org", "wronghead.com", "yopmail.com",
+    "yopmail.fr", "yopmail.net", "zehnminutenmail.de",
+    "0clickemail.com", "1secmail.com", "30minutemail.com",
+    "5ymail.com",
+}
+
+
+def is_disposable_email(email: str) -> bool:
+    domain = email.lower().rsplit("@", 1)[-1].strip()
+    return domain in DISPOSABLE_DOMAINS
+
 
 def get_supabase() -> Client:
     """
@@ -50,6 +106,10 @@ def is_logged_in() -> bool:
 def signup(email: str, password: str) -> tuple[bool, str]:
     if len(password) < 6:
         return False, "密碼至少 6 位"
+    if "@" not in email:
+        return False, "Email 格式錯誤"
+    if is_disposable_email(email):
+        return False, "唔接受 disposable / temp email，請用真實 email"
     try:
         sb = get_supabase()
         result = sb.auth.sign_up({"email": email, "password": password})
