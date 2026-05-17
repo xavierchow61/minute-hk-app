@@ -1,9 +1,15 @@
 """Gemini transcribe + summarize for cloud (one API does both)"""
+import io
+import tempfile
+import time
+from pathlib import Path
+
 import streamlit as st
 from google import genai
 from google.genai import types
 
 GEMINI_MODEL = "gemini-2.5-flash"
+INLINE_MAX_BYTES = 18 * 1024 * 1024   # < 20MB Gemini inline limit, leave headroom
 
 
 def _client():
@@ -51,20 +57,31 @@ SUMMARY_PROMPT = """你係資深嘅商務會議秘書。
 *由 AI 自動生成*"""
 
 
+def _ext_from_mime(mime_type: str) -> str:
+    return {
+        "audio/mpeg": ".mp3",
+        "audio/mp3": ".mp3",
+        "audio/mp4": ".m4a",
+        "audio/x-m4a": ".m4a",
+        "audio/wav": ".wav",
+        "audio/x-wav": ".wav",
+        "audio/ogg": ".ogg",
+        "audio/flac": ".flac",
+        "audio/webm": ".webm",
+        "video/mp4": ".mp4",
+    }.get(mime_type, ".bin")
+
+
 def process_audio(audio_bytes: bytes, mime_type: str,
                   client_name: str = "", project_name: str = "") -> dict:
     """
     一個 Gemini call 完成：transcribe + summarize
-    Returns: {summary: str, transcript: str (optional)}
+    < 18MB 用 inline，>= 18MB 用 Files API upload
     """
     client = _client()
+    size_mb = len(audio_bytes) / (1024 * 1024)
 
-    # Upload audio file to Gemini
-    audio_file = client.files.upload(
-        file=audio_bytes,
-        config=types.UploadFileConfig(mime_type=mime_type),
-    )
-
+    # Build client info
     client_info = ""
     if client_name:
         client_info += f"客戶 {client_name}"
@@ -78,46 +95,53 @@ def process_audio(audio_bytes: bytes, mime_type: str,
         client_info=client_info,
     )
 
-    # Generate summary from audio
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=[prompt, audio_file],
-        config=types.GenerateContentConfig(
-            temperature=0.3,
-            max_output_tokens=8192,
-        ),
-    )
+    # === 小檔案：inline data（最快） ===
+    if len(audio_bytes) <= INLINE_MAX_BYTES:
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[
+                prompt,
+                types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+            ],
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=8192,
+            ),
+        )
+        return {"summary": response.text, "model": GEMINI_MODEL, "method": "inline"}
 
-    # Clean up uploaded file
+    # === 大檔案：Files API upload ===
+    ext = _ext_from_mime(mime_type)
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        tmp.write(audio_bytes)
+        tmp_path = Path(tmp.name)
+
     try:
-        client.files.delete(name=audio_file.name)
-    except Exception:
-        pass
+        audio_file = client.files.upload(file=str(tmp_path))
 
-    return {
-        "summary": response.text,
-        "model": GEMINI_MODEL,
-    }
+        # 等檔案 state 變 ACTIVE（Gemini 有時要 process 幾秒）
+        for _ in range(60):
+            if hasattr(audio_file, "state") and getattr(audio_file.state, "name", "") == "ACTIVE":
+                break
+            time.sleep(1)
+            audio_file = client.files.get(name=audio_file.name)
 
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[prompt, audio_file],
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=8192,
+            ),
+        )
 
-def get_transcript(audio_bytes: bytes, mime_type: str) -> str:
-    """單獨攞文字稿（如有需要）"""
-    client = _client()
-    audio_file = client.files.upload(
-        file=audio_bytes,
-        config=types.UploadFileConfig(mime_type=mime_type),
-    )
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=[
-            "請將呢段錄音逐字 transcribe 出嚟。保留原文嘅語言（廣東話、普通話、英文）。"
-            "格式：純文字，唔需要 timestamp。",
-            audio_file,
-        ],
-        config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=8192),
-    )
-    try:
-        client.files.delete(name=audio_file.name)
-    except Exception:
-        pass
-    return response.text
+        # 清理 cloud file
+        try:
+            client.files.delete(name=audio_file.name)
+        except Exception:
+            pass
+
+        return {"summary": response.text, "model": GEMINI_MODEL, "method": "files_api"}
+
+    finally:
+        tmp_path.unlink(missing_ok=True)

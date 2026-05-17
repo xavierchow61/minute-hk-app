@@ -223,7 +223,16 @@ with tab_new:
                             )
 
                     except Exception as e:
-                        st.error(f"❌ 處理失敗：{e}")
+                        # Show user-friendly error (not raw bytes dump)
+                        err_msg = str(e)
+                        if len(err_msg) > 300:
+                            err_msg = err_msg[:300] + "..."
+                        # Filter out raw bytes from error (b'\x00\x00...')
+                        if "\\x" in err_msg or err_msg.startswith("b'"):
+                            err_msg = "錄音處理失敗。請試吓另一個檔案，或者影 logs 俾 admin。"
+                        st.error(f"❌ {err_msg}")
+                        with st.expander("🔍 技術詳情（debug 用）"):
+                            st.exception(e)
 
 # ============ Tab 2: History ============
 with tab_history:
