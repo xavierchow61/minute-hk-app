@@ -9,83 +9,108 @@ import db
 st.set_page_config(
     page_title="Minute.hk - 廣東話會議 AI",
     page_icon="🎙️",
-    layout="wide",
+    layout="centered",
+    initial_sidebar_state="collapsed",
     menu_items={
         "About": "Minute.hk - 香港人專用 AI 會議摘要工具",
     },
 )
 
-# ============ Style ============
+# ============ Style - compact (fit one screen) ============
 st.markdown("""
 <style>
-    .stApp { max-width: 1100px; margin: 0 auto; }
-    .stButton button { border-radius: 8px; }
-    h1 { color: #1e293b; }
+    /* 收緊上下 padding，等內容一眼睇晒 */
+    .main .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        max-width: 600px;
+    }
+    .stApp { background: #fafafa; }
+    .stButton button { border-radius: 8px; font-weight: 600; }
+    .stButton button[kind="primary"] {
+        background: #1e66f5;
+        border: none;
+    }
+    h1 { color: #1e293b; margin-bottom: 0 !important; padding-bottom: 0 !important; }
+    h1, h2, h3 { padding-top: 0.5rem !important; }
     .stAlert { border-radius: 12px; }
     div[data-testid="stToolbar"] { display: none; }
     footer { display: none; }
     #MainMenu { visibility: hidden; }
+    /* 收緊 tabs 同 form 之間 spacing */
+    div[data-testid="stTabs"] { margin-top: 0.5rem; }
+    div[data-testid="stForm"] { border: none; padding: 0; }
+    /* Caption 細啲 */
+    .stCaption { color: #64748b; font-size: 0.85rem; }
 </style>
 """, unsafe_allow_html=True)
 
 auth.init_session()
 
-# ============ Auth UI (if not logged in) ============
+# ============ Auth UI (if not logged in) — Compact ============
 if not auth.is_logged_in():
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.title("🎙️ Minute.hk")
-        st.caption("廣東話會議 AI 摘要 · 香港人專用")
-        st.write("")
+    # Compact header
+    st.markdown(
+        "<h2 style='text-align:center;margin:0;'>🎙️ Minute.hk</h2>"
+        "<p style='text-align:center;color:#64748b;margin:0 0 0.5rem 0;font-size:0.9rem;'>"
+        "廣東話會議 AI 摘要 · 香港人專用</p>",
+        unsafe_allow_html=True,
+    )
 
-        tab_login, tab_signup, tab_reset = st.tabs(["🔓 登入", "✨ 註冊", "🔑 忘記密碼"])
+    tab_login, tab_signup, tab_reset = st.tabs(["🔓 登入", "✨ 註冊", "🔑 忘記密碼"])
 
-        with tab_login:
-            with st.form("login_form"):
-                email = st.text_input("Email", placeholder="you@example.com")
-                password = st.text_input("密碼", type="password")
-                submit = st.form_submit_button("登入", type="primary", use_container_width=True)
-                if submit:
-                    if not email or not password:
-                        st.error("請填 email 同密碼")
+    with tab_login:
+        with st.form("login_form"):
+            email = st.text_input("Email", placeholder="you@example.com", label_visibility="collapsed")
+            password = st.text_input("密碼", type="password", placeholder="密碼", label_visibility="collapsed")
+            submit = st.form_submit_button("登入", type="primary", use_container_width=True)
+            if submit:
+                if not email or not password:
+                    st.error("請填 email 同密碼")
+                else:
+                    ok, msg = auth.login(email, password)
+                    if ok:
+                        st.success(msg)
+                        st.rerun()
                     else:
-                        ok, msg = auth.login(email, password)
-                        if ok:
-                            st.success(msg)
-                            st.rerun()
-                        else:
-                            st.error(msg)
+                        st.error(msg)
 
-        with tab_signup:
-            with st.form("signup_form"):
-                email = st.text_input("Email", placeholder="you@example.com", key="su_email")
-                password = st.text_input("密碼（至少 6 位）", type="password", key="su_pass")
-                password2 = st.text_input("確認密碼", type="password", key="su_pass2")
-                st.caption("註冊即同意使用條款及私隱政策")
-                submit = st.form_submit_button("✨ 免費註冊", type="primary", use_container_width=True)
-                if submit:
-                    if not email or not password:
-                        st.error("請填 email 同密碼")
-                    elif password != password2:
-                        st.error("兩次密碼唔同")
+    with tab_signup:
+        with st.form("signup_form"):
+            email = st.text_input("Email", placeholder="you@example.com",
+                                  key="su_email", label_visibility="collapsed")
+            password = st.text_input("密碼", type="password", placeholder="密碼（至少 6 位）",
+                                     key="su_pass", label_visibility="collapsed")
+            password2 = st.text_input("確認密碼", type="password", placeholder="確認密碼",
+                                      key="su_pass2", label_visibility="collapsed")
+            submit = st.form_submit_button("✨ 免費註冊", type="primary", use_container_width=True)
+            if submit:
+                if not email or not password:
+                    st.error("請填 email 同密碼")
+                elif password != password2:
+                    st.error("兩次密碼唔同")
+                else:
+                    ok, msg = auth.signup(email, password)
+                    if ok:
+                        st.success(msg)
                     else:
-                        ok, msg = auth.signup(email, password)
-                        if ok:
-                            st.success(msg)
-                            st.info("📧 請開你個 email mailbox，撳啟用 link。然後返呢度登入。")
-                        else:
-                            st.error(msg)
+                        st.error(msg)
 
-        with tab_reset:
-            with st.form("reset_form"):
-                email = st.text_input("Email", key="rp_email")
-                submit = st.form_submit_button("📧 send reset link", use_container_width=True)
-                if submit and email:
-                    ok, msg = auth.reset_password(email)
-                    (st.success if ok else st.error)(msg)
+    with tab_reset:
+        with st.form("reset_form"):
+            email = st.text_input("Email", key="rp_email",
+                                  placeholder="你註冊嘅 email", label_visibility="collapsed")
+            submit = st.form_submit_button("📧 send reset link", use_container_width=True)
+            if submit and email:
+                ok, msg = auth.reset_password(email)
+                (st.success if ok else st.error)(msg)
 
-        st.write("")
-        st.caption("⬅️ [返主頁](https://minutehk.vercel.app)")
+    st.markdown(
+        "<p style='text-align:center;font-size:0.8rem;color:#64748b;margin-top:0.5rem;'>"
+        "⬅️ <a href='https://minutehk.vercel.app' style='color:#1e66f5;'>返主頁</a>"
+        " · 免費版 30 分鐘/月</p>",
+        unsafe_allow_html=True,
+    )
 
     st.stop()
 
