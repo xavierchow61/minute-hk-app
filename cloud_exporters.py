@@ -157,27 +157,107 @@ def _md_to_pdf_weasy(md_text: str) -> bytes:
             font-family: 'Noto Sans CJK TC', 'Noto Sans CJK SC', 'Microsoft JhengHei',
                          'PingFang TC', 'Heiti TC', sans-serif;
             font-size: 11pt;
-            line-height: 1.6;
+            line-height: 1.7;
             color: #1e293b;
         }
-        h1 { color: #1e66f5; font-size: 20pt; border-bottom: 2px solid #e2e8f0; padding-bottom: 8pt; }
-        h2 { color: #1e293b; font-size: 14pt; margin-top: 16pt; border-bottom: 1px solid #f1f5f9; padding-bottom: 4pt; }
-        h3 { color: #475569; font-size: 12pt; margin-top: 12pt; }
+        h1 {
+            color: #1e66f5;
+            font-size: 20pt;
+            border-bottom: 2px solid #1e66f5;
+            padding-bottom: 8pt;
+            margin-bottom: 16pt;
+        }
+        h2 {
+            color: #1e293b;
+            font-size: 14pt;
+            margin-top: 18pt;
+            margin-bottom: 8pt;
+            padding-bottom: 4pt;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        h3 {
+            color: #475569;
+            font-size: 12pt;
+            margin-top: 14pt;
+            margin-bottom: 6pt;
+        }
         p { margin: 6pt 0; }
-        table { width: 100%; border-collapse: collapse; margin: 10pt 0; }
-        th, td { border: 1px solid #cbd5e1; padding: 6pt 10pt; text-align: left; font-size: 10pt; }
-        th { background: #f8fafc; font-weight: 600; }
-        ul, ol { margin: 6pt 0; padding-left: 20pt; }
-        li { margin: 3pt 0; }
-        blockquote {
-            border-left: 3px solid #1e66f5;
-            padding-left: 12pt;
-            color: #64748b;
-            font-style: italic;
+
+        /* Table 美化 */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12pt 0;
+            font-size: 10pt;
+        }
+        th, td {
+            border: 1px solid #cbd5e1;
+            padding: 6pt 10pt;
+            text-align: left;
+        }
+        th {
+            background: #f1f5f9;
+            font-weight: 700;
+            color: #1e293b;
+        }
+        tr:nth-child(even) td { background: #fafbfc; }
+
+        /* 🎯 List：用 custom bullet (唔依賴字體) */
+        ul {
+            list-style: none;
+            padding-left: 0;
             margin: 8pt 0;
         }
-        hr { border: none; border-top: 1px solid #e2e8f0; margin: 12pt 0; }
-        code { background: #f1f5f9; padding: 1pt 4pt; border-radius: 3pt; font-family: 'Consolas', monospace; font-size: 10pt; }
+        ul li {
+            position: relative;
+            padding-left: 18pt;
+            margin: 5pt 0;
+        }
+        ul li::before {
+            content: "▸";
+            color: #1e66f5;
+            font-weight: bold;
+            position: absolute;
+            left: 2pt;
+            top: 0;
+            font-family: 'Helvetica', 'Arial', sans-serif;
+        }
+        ol {
+            padding-left: 22pt;
+            margin: 8pt 0;
+        }
+        ol li { margin: 5pt 0; padding-left: 4pt; }
+        ol li::marker { color: #1e66f5; font-weight: 700; }
+
+        /* Nested lists */
+        ul ul, ol ol, ul ol, ol ul {
+            margin: 4pt 0 4pt 0;
+        }
+        ul ul li::before { content: "·"; }
+
+        blockquote {
+            border-left: 3px solid #1e66f5;
+            padding: 4pt 12pt;
+            margin: 10pt 0;
+            color: #475569;
+            font-style: italic;
+            background: #f8fafc;
+        }
+        hr {
+            border: none;
+            border-top: 1px solid #e2e8f0;
+            margin: 14pt 0;
+        }
+        code {
+            background: #f1f5f9;
+            padding: 1pt 5pt;
+            border-radius: 3pt;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 9.5pt;
+            color: #1e66f5;
+        }
+        strong { color: #1e293b; font-weight: 700; }
+        em { color: #475569; }
     """)
 
     out = io.BytesIO()

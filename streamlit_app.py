@@ -171,30 +171,45 @@ st.markdown("""
     .badge-pro { background: #ecfdf5; color: #047857; }
     .badge-team { background: #fef3c7; color: #92400e; }
 
-    /* Custom header bar */
-    .app-header {
+    /* User info top bar (主畫面) */
+    .user-bar {
         display: flex;
-        align-items: center;
         justify-content: space-between;
-        padding: 0.5rem 0 1rem 0;
-        border-bottom: 1px solid #f1f5f9;
-        margin-bottom: 1rem;
+        align-items: center;
+        padding: 0.8rem 1.2rem;
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        margin-bottom: 1.2rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     }
-    .app-logo {
-        font-size: 1.2rem;
+    .user-bar-left { display: flex; flex-direction: column; gap: 4px; }
+    .user-bar-logo {
+        font-size: 1.15rem;
         font-weight: 700;
         color: #1e293b;
     }
-    .app-logo span { color: #1e66f5; }
-    .app-plan {
-        font-size: 0.75rem;
-        padding: 3px 10px;
-        border-radius: 12px;
-        background: #eff6ff;
-        color: #1e66f5;
-        font-weight: 600;
+    .user-bar-logo span { color: #1e66f5; }
+    .user-bar-usage {
+        font-size: 0.78rem;
+        color: #64748b;
     }
-    .app-plan.pro { background: #ecfdf5; color: #047857; }
+    .user-bar-usage strong { color: #1e293b; }
+    .user-bar-right { text-align: right; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+    .user-bar-email {
+        font-size: 0.85rem;
+        color: #475569;
+    }
+    .user-bar-badge {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 10px;
+        font-size: 0.72rem;
+        font-weight: 700;
+    }
+    .badge-free { background: #eff6ff; color: #1e66f5; }
+    .badge-pro { background: #ecfdf5; color: #047857; }
+    .badge-team { background: #fef3c7; color: #92400e; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -299,107 +314,65 @@ if not auth.is_logged_in():
 # ============ Logged in - Main App ============
 user = auth.get_user()
 plan = db.get_user_plan(user["id"])
-
-# Custom header bar
-plan_class = "pro" if plan in ("pro", "team") else ""
 plan_emoji = {"free": "🆓", "pro": "⭐", "team": "👥"}.get(plan, "🆓")
+plan_badge_class = {"free": "badge-free", "pro": "badge-pro", "team": "badge-team"}.get(plan, "badge-free")
+
+# === Compute usage for top bar ===
+monthly_used = db.get_monthly_usage_seconds(user["id"]) / 60
+daily_used = db.get_daily_usage_seconds(user["id"]) / 60
+if plan == "free":
+    monthly_limit_str = f"{db.FREE_MONTHLY_SECONDS / 60:.0f}"
+    daily_limit_str = f"{db.FREE_DAILY_SECONDS / 60:.0f}"
+else:
+    monthly_limit_str = "∞"
+    daily_limit_str = f"{db.PRO_DAILY_SECONDS / 60:.0f}"
+
+# === Top User Bar (主畫面上方) ===
 st.markdown(f"""
-<div class="app-header">
-    <div class="app-logo">🎙️ Minute<span>.hk</span></div>
-    <div class="app-plan {plan_class}">{plan_emoji} {plan.upper()}</div>
+<div class="user-bar">
+    <div class="user-bar-left">
+        <div class="user-bar-logo">🎙️ Minute<span>.hk</span></div>
+        <div class="user-bar-usage">
+            📊 今日 <strong>{daily_used:.1f}/{daily_limit_str}</strong> 分鐘
+            · 本月 <strong>{monthly_used:.1f}/{monthly_limit_str}</strong> 分鐘
+        </div>
+    </div>
+    <div class="user-bar-right">
+        <div class="user-bar-email">👋 {user["email"]}</div>
+        <span class="user-bar-badge {plan_badge_class}">{plan_emoji} {plan.upper()}</span>
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Sidebar
+# === Sidebar (簡化版：只係快速連結 + 登出) ===
 with st.sidebar:
-    # === Logo ===
     st.markdown(
-        "<div style='font-size:1.1rem;font-weight:700;color:#1e293b;padding:0 0 0.8rem 0;'>"
+        "<div style='font-size:1.05rem;font-weight:700;color:#1e293b;padding:0.3rem 0 1rem 0;'>"
         "🎙️ Minute<span style='color:#1e66f5;'>.hk</span></div>",
         unsafe_allow_html=True,
     )
 
-    # === User card ===
-    plan_badge_class = {"free": "badge-free", "pro": "badge-pro", "team": "badge-team"}.get(plan, "badge-free")
-    st.markdown(f"""
-    <div class="sidebar-user-card">
-        <div class="sidebar-user-name">👋 Hi!</div>
-        <div class="sidebar-user-email">{user["email"]}</div>
-        <span class="sidebar-plan-badge {plan_badge_class}">{plan_emoji} {plan.upper()}</span>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # === Usage stats ===
-    st.markdown("##### 📊 用量")
-    if plan == "free":
-        # Monthly
-        monthly_used = db.get_monthly_usage_seconds(user["id"]) / 60
-        monthly_limit = db.FREE_MONTHLY_SECONDS / 60
-        monthly_progress = min(monthly_used / monthly_limit, 1.0)
-        st.caption(f"本月：{monthly_used:.1f} / {monthly_limit:.0f} 分鐘")
-        st.progress(monthly_progress)
-
-        # Daily
-        daily_used = db.get_daily_usage_seconds(user["id"]) / 60
-        daily_limit = db.FREE_DAILY_SECONDS / 60
-        daily_progress = min(daily_used / daily_limit, 1.0)
-        st.caption(f"今日：{daily_used:.1f} / {daily_limit:.0f} 分鐘")
-        st.progress(daily_progress)
-    else:
-        monthly_used = db.get_monthly_usage_seconds(user["id"]) / 60
-        st.caption(f"本月：{monthly_used:.1f} 分鐘（無限）")
-        daily_used = db.get_daily_usage_seconds(user["id"]) / 60
-        daily_limit = db.PRO_DAILY_SECONDS / 60
-        daily_progress = min(daily_used / daily_limit, 1.0)
-        st.caption(f"今日：{daily_used:.1f} / {daily_limit:.0f} 分鐘")
-        st.progress(daily_progress)
-
-    # === Upgrade Pro (only if free) ===
-    if plan == "free":
-        st.markdown("##### ⭐ 升級 Pro")
-        st.caption("無限錄音 · 全部功能 · HKD 99/月")
-        if cloud_stripe.is_configured():
-            if st.button("立即升級", type="primary", use_container_width=True):
-                with st.spinner("跳轉去 Stripe..."):
-                    try:
-                        url = cloud_stripe.create_checkout_session(
-                            user_id=user["id"],
-                            user_email=user["email"],
-                            plan="pro",
-                        )
-                        st.markdown(
-                            f'<meta http-equiv="refresh" content="0;url={url}">',
-                            unsafe_allow_html=True,
-                        )
-                        st.link_button("👉 撳呢度繼續", url, use_container_width=True)
-                    except Exception as e:
-                        st.error(f"無法跳轉：{e}")
-        else:
-            st.caption("⚠️ Stripe 未設定")
-
-    # === Quick links ===
     st.markdown("##### 🔗 快速連結")
     st.markdown(
         "<a href='https://minutehk.vercel.app' target='_blank' "
-        "style='color:#1e66f5;text-decoration:none;font-size:0.85rem;'>"
+        "style='color:#1e66f5;text-decoration:none;font-size:0.85rem;display:block;padding:4px 0;'>"
         "🏠 主頁</a>",
         unsafe_allow_html=True,
     )
     st.markdown(
         "<a href='https://minutehk.vercel.app/#faq' target='_blank' "
-        "style='color:#1e66f5;text-decoration:none;font-size:0.85rem;'>"
+        "style='color:#1e66f5;text-decoration:none;font-size:0.85rem;display:block;padding:4px 0;'>"
         "❓ 常見問題</a>",
         unsafe_allow_html=True,
     )
     st.markdown(
         "<a href='mailto:xavierchow61@gmail.com' "
-        "style='color:#1e66f5;text-decoration:none;font-size:0.85rem;'>"
+        "style='color:#1e66f5;text-decoration:none;font-size:0.85rem;display:block;padding:4px 0;'>"
         "📧 聯絡支援</a>",
         unsafe_allow_html=True,
     )
 
-    # === Logout (bottom) ===
-    st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top:1.5rem;'></div>", unsafe_allow_html=True)
     if st.button("🚪 登出", use_container_width=True):
         auth.logout()
         st.rerun()
