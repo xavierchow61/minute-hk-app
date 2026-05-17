@@ -202,38 +202,32 @@ def _md_to_pdf_weasy(md_text: str) -> bytes:
         }
         tr:nth-child(even) td { background: #fafbfc; }
 
-        /* 🎯 List：用 custom bullet (唔依賴字體) */
-        ul {
+        /* 🎯 List：唔用 bullet（純文字 + 縮排）*/
+        ul, ol {
             list-style: none;
-            padding-left: 0;
-            margin: 8pt 0;
+            padding-left: 14pt;
+            margin: 6pt 0;
         }
-        ul li {
-            position: relative;
-            padding-left: 18pt;
-            margin: 5pt 0;
+        ul li, ol li {
+            margin: 4pt 0;
+            line-height: 1.6;
         }
-        ul li::before {
-            content: "▸";
-            color: #1e66f5;
-            font-weight: bold;
-            position: absolute;
-            left: 2pt;
-            top: 0;
-            font-family: 'Helvetica', 'Arial', sans-serif;
-        }
+        /* Numbered list 用數字編號（順序清晰） */
         ol {
-            padding-left: 22pt;
-            margin: 8pt 0;
+            counter-reset: item;
         }
-        ol li { margin: 5pt 0; padding-left: 4pt; }
-        ol li::marker { color: #1e66f5; font-weight: 700; }
-
-        /* Nested lists */
+        ol li::before {
+            content: counter(item) ". ";
+            counter-increment: item;
+            color: #475569;
+            font-weight: 600;
+            margin-right: 4pt;
+        }
+        /* Nested - 多 indent */
         ul ul, ol ol, ul ol, ol ul {
-            margin: 4pt 0 4pt 0;
+            margin: 3pt 0 3pt 0;
+            padding-left: 18pt;
         }
-        ul ul li::before { content: "·"; }
 
         blockquote {
             border-left: 3px solid #1e66f5;
