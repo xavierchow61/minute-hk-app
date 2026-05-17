@@ -1,8 +1,10 @@
-"""Minute.hk Cloud Web App - Streamlit + Supabase + Gemini"""
+"""Minute.hk Cloud Web App - Streamlit + Supabase + Gemini + Stripe"""
 import streamlit as st
 
 import ai
 import auth
+import cloud_exporters
+import cloud_stripe
 import db
 
 # ============ Page Config ============
@@ -10,49 +12,125 @@ st.set_page_config(
     page_title="Minute.hk - 廣東話會議 AI",
     page_icon="🎙️",
     layout="centered",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="auto",
     menu_items={
         "About": "Minute.hk - 香港人專用 AI 會議摘要工具",
     },
 )
 
-# ============ Style - compact (fit one screen) ============
+# ============ Style - professional + compact ============
 st.markdown("""
 <style>
-    /* 收緊上下 padding，等內容一眼睇晒 */
+    /* Layout */
     .main .block-container {
-        padding-top: 1rem;
-        padding-bottom: 1rem;
-        max-width: 600px;
+        padding-top: 1.5rem;
+        padding-bottom: 2rem;
+        max-width: 800px;
     }
-    .stApp { background: #fafafa; }
-    .stButton button { border-radius: 8px; font-weight: 600; }
+    .stApp { background: #fafbfc; }
+
+    /* Headings — smaller, more professional */
+    h1 {
+        font-size: 1.5rem !important;
+        color: #1e293b;
+        margin-bottom: 0.5rem !important;
+        padding-bottom: 0 !important;
+        font-weight: 700;
+    }
+    h2 {
+        font-size: 1.15rem !important;
+        color: #334155;
+        margin-top: 1.2rem !important;
+        margin-bottom: 0.4rem !important;
+        font-weight: 600;
+    }
+    h3 {
+        font-size: 1rem !important;
+        color: #475569;
+        margin-top: 0.8rem !important;
+    }
+
+    /* Buttons */
+    .stButton button {
+        border-radius: 8px;
+        font-weight: 500;
+        border: 1px solid #e2e8f0;
+        font-size: 0.9rem;
+    }
     .stButton button[kind="primary"] {
         background: #1e66f5;
         border: none;
+        color: white;
     }
-    h1 { color: #1e293b; margin-bottom: 0 !important; padding-bottom: 0 !important; }
-    h1, h2, h3 { padding-top: 0.5rem !important; }
-    .stAlert { border-radius: 12px; }
+    .stDownloadButton button {
+        border-radius: 8px;
+        background: white;
+        border: 1px solid #cbd5e1;
+        color: #475569;
+        font-weight: 500;
+    }
+    .stDownloadButton button:hover {
+        border-color: #1e66f5;
+        color: #1e66f5;
+    }
+
+    /* Misc */
+    .stAlert { border-radius: 10px; font-size: 0.9rem; }
     div[data-testid="stToolbar"] { display: none; }
     footer { display: none; }
     #MainMenu { visibility: hidden; }
-    /* 收緊 tabs 同 form 之間 spacing */
-    div[data-testid="stTabs"] { margin-top: 0.5rem; }
+    div[data-testid="stTabs"] { margin-top: 0.3rem; }
     div[data-testid="stForm"] { border: none; padding: 0; }
-    /* Caption 細啲 */
-    .stCaption { color: #64748b; font-size: 0.85rem; }
+
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background: white;
+        border-right: 1px solid #f1f5f9;
+    }
+
+    /* Custom header bar */
+    .app-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 0 1rem 0;
+        border-bottom: 1px solid #f1f5f9;
+        margin-bottom: 1rem;
+    }
+    .app-logo {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #1e293b;
+    }
+    .app-logo span { color: #1e66f5; }
+    .app-plan {
+        font-size: 0.75rem;
+        padding: 3px 10px;
+        border-radius: 12px;
+        background: #eff6ff;
+        color: #1e66f5;
+        font-weight: 600;
+    }
+    .app-plan.pro { background: #ecfdf5; color: #047857; }
 </style>
 """, unsafe_allow_html=True)
 
 auth.init_session()
 
-# ============ Auth UI (if not logged in) — Compact ============
+# ============ Handle Stripe redirect ============
+qp = st.query_params
+if qp.get("upgrade") == "success":
+    st.toast("🎉 升級成功！可能要幾分鐘 sync。", icon="✅")
+    st.query_params.clear()
+elif qp.get("upgrade") == "cancel":
+    st.toast("已取消升級", icon="ℹ️")
+    st.query_params.clear()
+
+# ============ Auth UI (if not logged in) ============
 if not auth.is_logged_in():
-    # Compact header
     st.markdown(
-        "<h2 style='text-align:center;margin:0;'>🎙️ Minute.hk</h2>"
-        "<p style='text-align:center;color:#64748b;margin:0 0 0.5rem 0;font-size:0.9rem;'>"
+        "<h2 style='text-align:center;margin:1rem 0 0 0;'>🎙️ Minute.hk</h2>"
+        "<p style='text-align:center;color:#64748b;margin:0.2rem 0 0.8rem 0;font-size:0.85rem;'>"
         "廣東話會議 AI 摘要 · 香港人專用</p>",
         unsafe_allow_html=True,
     )
@@ -62,7 +140,7 @@ if not auth.is_logged_in():
     with tab_login:
         with st.form("login_form"):
             email = st.text_input("Email", placeholder="you@example.com", label_visibility="collapsed")
-            password = st.text_input("密碼", type="password", placeholder="密碼", label_visibility="collapsed")
+            password = st.text_input("Password", type="password", placeholder="密碼", label_visibility="collapsed")
             submit = st.form_submit_button("登入", type="primary", use_container_width=True)
             if submit:
                 if not email or not password:
@@ -79,9 +157,9 @@ if not auth.is_logged_in():
         with st.form("signup_form"):
             email = st.text_input("Email", placeholder="you@example.com",
                                   key="su_email", label_visibility="collapsed")
-            password = st.text_input("密碼", type="password", placeholder="密碼（至少 6 位）",
+            password = st.text_input("Password", type="password", placeholder="密碼（至少 6 位）",
                                      key="su_pass", label_visibility="collapsed")
-            password2 = st.text_input("確認密碼", type="password", placeholder="確認密碼",
+            password2 = st.text_input("Confirm", type="password", placeholder="確認密碼",
                                       key="su_pass2", label_visibility="collapsed")
             submit = st.form_submit_button("✨ 免費註冊", type="primary", use_container_width=True)
             if submit:
@@ -93,6 +171,8 @@ if not auth.is_logged_in():
                     ok, msg = auth.signup(email, password)
                     if ok:
                         st.success(msg)
+                        if "正在登入" in msg:
+                            st.rerun()
                     else:
                         st.error(msg)
 
@@ -100,15 +180,15 @@ if not auth.is_logged_in():
         with st.form("reset_form"):
             email = st.text_input("Email", key="rp_email",
                                   placeholder="你註冊嘅 email", label_visibility="collapsed")
-            submit = st.form_submit_button("📧 send reset link", use_container_width=True)
+            submit = st.form_submit_button("📧 寄重設密碼 link", use_container_width=True)
             if submit and email:
                 ok, msg = auth.reset_password(email)
                 (st.success if ok else st.error)(msg)
 
     st.markdown(
-        "<p style='text-align:center;font-size:0.8rem;color:#64748b;margin-top:0.5rem;'>"
-        "⬅️ <a href='https://minutehk.vercel.app' style='color:#1e66f5;'>返主頁</a>"
-        " · 免費版 30 分鐘/月</p>",
+        "<p style='text-align:center;font-size:0.78rem;color:#94a3b8;margin-top:1rem;'>"
+        "<a href='https://minutehk.vercel.app' style='color:#1e66f5;text-decoration:none;'>← 返主頁</a>"
+        "&nbsp;·&nbsp;免費版 30 分鐘/月</p>",
         unsafe_allow_html=True,
     )
 
@@ -116,14 +196,22 @@ if not auth.is_logged_in():
 
 # ============ Logged in - Main App ============
 user = auth.get_user()
+plan = db.get_user_plan(user["id"])
+
+# Custom header bar
+plan_class = "pro" if plan in ("pro", "team") else ""
+plan_emoji = {"free": "🆓", "pro": "⭐", "team": "👥"}.get(plan, "🆓")
+st.markdown(f"""
+<div class="app-header">
+    <div class="app-logo">🎙️ Minute<span>.hk</span></div>
+    <div class="app-plan {plan_class}">{plan_emoji} {plan.upper()}</div>
+</div>
+""", unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
-    st.markdown(f"### 👋 Hi!")
-    st.markdown(f"`{user['email']}`")
-
-    plan = db.get_user_plan(user["id"])
-    plan_emoji = {"free": "🆓", "pro": "⭐", "team": "👥"}.get(plan, "🆓")
+    st.markdown(f"##### 👋 Hi!")
+    st.caption(user["email"])
     st.markdown(f"**Plan**: {plan_emoji} {plan.upper()}")
 
     if plan == "free":
@@ -131,60 +219,75 @@ with st.sidebar:
         used_min = used_sec / 60
         limit_min = db.FREE_MONTHLY_SECONDS / 60
         progress = min(used_sec / db.FREE_MONTHLY_SECONDS, 1.0)
-        st.progress(progress, text=f"今月已用 {used_min:.1f}/{limit_min:.0f} 分鐘")
-        if progress >= 0.8:
-            st.warning("快用完啦！考慮升級 Pro")
-            st.link_button("⭐ 升級 Pro", "https://minutehk.vercel.app/#pricing",
-                           use_container_width=True)
+        st.progress(progress, text=f"{used_min:.1f}/{limit_min:.0f} 分鐘")
 
-    st.write("---")
+        st.divider()
+        st.markdown("##### ⭐ 升級 Pro")
+        st.caption("無限錄音 · 全部功能")
+        if cloud_stripe.is_configured():
+            if st.button("HKD 99/月 →", type="primary", use_container_width=True):
+                with st.spinner("跳轉去 Stripe..."):
+                    try:
+                        url = cloud_stripe.create_checkout_session(
+                            user_id=user["id"],
+                            user_email=user["email"],
+                            plan="pro",
+                        )
+                        st.markdown(
+                            f'<meta http-equiv="refresh" content="0;url={url}">',
+                            unsafe_allow_html=True,
+                        )
+                        st.link_button("👉 撳呢度繼續", url, use_container_width=True)
+                    except Exception as e:
+                        st.error(f"無法跳轉：{e}")
+        else:
+            st.caption("⚠️ Stripe 未設定（admin 要 setup）")
+
+    st.divider()
     if st.button("🚪 登出", use_container_width=True):
         auth.logout()
         st.rerun()
 
-    st.write("---")
     st.caption("[← 返主頁](https://minutehk.vercel.app)")
 
-# Main content
+# Main content tabs
 tab_new, tab_history = st.tabs(["🎙️ 新會議", "📚 過往會議"])
 
 # ============ Tab 1: New Meeting ============
 with tab_new:
-    st.title("🎙️ 處理新會議")
+    st.markdown("### 處理新會議")
 
     col1, col2 = st.columns(2)
     with col1:
-        client_name = st.text_input("客戶（optional）", placeholder="ABC Limited")
+        client_name = st.text_input("客戶", placeholder="ABC Limited", label_visibility="visible")
     with col2:
-        project_name = st.text_input("項目（optional）", placeholder="2026 年度 audit")
+        project_name = st.text_input("項目", placeholder="2026 audit", label_visibility="visible")
 
     uploaded = st.file_uploader(
-        "📁 上傳會議錄音",
+        "上傳會議錄音",
         type=["mp3", "m4a", "wav", "mp4", "ogg", "flac", "webm"],
         help="支援 mp3/m4a/wav/mp4/ogg/flac/webm，最大 200MB",
+        label_visibility="collapsed",
     )
 
     if uploaded:
         file_size_mb = uploaded.size / (1024 * 1024)
-        st.caption(f"📄 `{uploaded.name}` ({file_size_mb:.1f} MB)")
+        st.caption(f"📄 `{uploaded.name}` · {file_size_mb:.1f} MB")
         st.audio(uploaded)
 
-        # Estimate duration (rough: 1MB ≈ 60 sec for mp3 128kbps)
         est_duration_sec = file_size_mb * 60
 
-        # Check quota
         can_process_now, msg = db.can_process(user["id"], est_duration_sec)
         if not can_process_now:
             st.error(msg)
-            st.link_button("⭐ 升級 Pro 無限用", "https://minutehk.vercel.app/#pricing")
         else:
             if st.button("🚀 開始 AI 處理", type="primary", use_container_width=True):
-                with st.status("🤖 AI 處理中（可能要 30 秒到 2 分鐘）...", expanded=True) as status:
+                with st.status("🤖 AI 處理中...", expanded=True) as status:
                     try:
                         mime_type = uploaded.type or "audio/mpeg"
                         audio_bytes = uploaded.read()
-
                         st.write("🎯 上傳到 Gemini...")
+
                         result = ai.process_audio(
                             audio_bytes=audio_bytes,
                             mime_type=mime_type,
@@ -192,7 +295,6 @@ with tab_new:
                             project_name=project_name,
                         )
                         st.write("✅ AI 整理完成")
-
                         st.write("💾 儲存到資料庫...")
                         saved = db.save_meeting(
                             user_id=user["id"],
@@ -205,45 +307,73 @@ with tab_new:
                         st.write("✅ 已儲存")
                         status.update(label="✅ 完成！", state="complete")
 
-                        st.success(f"🎉 紀要已生成！Meeting ID: `{saved.get('id', '?')[:8]}`")
-
-                        # Display summary
-                        st.markdown("---")
-                        st.markdown(result["summary"])
-
-                        # Download buttons
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.download_button(
-                                "📥 下載 Markdown",
-                                result["summary"],
-                                file_name=f"{client_name or 'meeting'}_紀要.md",
-                                mime="text/markdown",
-                                use_container_width=True,
-                            )
+                        st.session_state.last_summary = result["summary"]
+                        st.session_state.last_meeting_name = client_name or "會議"
 
                     except Exception as e:
-                        # Show user-friendly error (not raw bytes dump)
                         err_msg = str(e)
-                        if len(err_msg) > 300:
-                            err_msg = err_msg[:300] + "..."
-                        # Filter out raw bytes from error (b'\x00\x00...')
                         if "\\x" in err_msg or err_msg.startswith("b'"):
-                            err_msg = "錄音處理失敗。請試吓另一個檔案，或者影 logs 俾 admin。"
+                            err_msg = "錄音處理失敗，請試吓另一個檔案。"
+                        elif len(err_msg) > 300:
+                            err_msg = err_msg[:300] + "..."
                         st.error(f"❌ {err_msg}")
-                        with st.expander("🔍 技術詳情（debug 用）"):
+                        with st.expander("🔍 技術詳情"):
                             st.exception(e)
+
+    # 顯示最後一次嘅 summary + download buttons
+    if st.session_state.get("last_summary"):
+        st.divider()
+        st.markdown("#### 📝 會議紀要")
+        st.markdown(st.session_state.last_summary)
+
+        st.markdown("##### 📥 下載")
+        col_md, col_word, col_pdf = st.columns(3)
+        base_name = st.session_state.get("last_meeting_name", "meeting").replace(" ", "_")
+
+        with col_md:
+            st.download_button(
+                "📝 Markdown",
+                st.session_state.last_summary,
+                file_name=f"{base_name}_紀要.md",
+                mime="text/markdown",
+                use_container_width=True,
+            )
+
+        with col_word:
+            try:
+                docx_bytes = cloud_exporters.md_to_docx_bytes(st.session_state.last_summary)
+                st.download_button(
+                    "📄 Word",
+                    docx_bytes,
+                    file_name=f"{base_name}_紀要.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                )
+            except Exception as e:
+                st.button("📄 Word (錯)", disabled=True, use_container_width=True, help=str(e))
+
+        with col_pdf:
+            try:
+                pdf_bytes = cloud_exporters.md_to_pdf_bytes(st.session_state.last_summary)
+                st.download_button(
+                    "📕 PDF",
+                    pdf_bytes,
+                    file_name=f"{base_name}_紀要.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
+            except Exception as e:
+                st.button("📕 PDF (錯)", disabled=True, use_container_width=True, help=str(e))
 
 # ============ Tab 2: History ============
 with tab_history:
-    st.title("📚 過往會議")
+    st.markdown("### 過往會議")
 
     meetings = db.list_meetings(user["id"], limit=50)
     if not meetings:
         st.info("仲未有任何會議紀錄。上面 tab 上傳第一個錄音啦！")
     else:
         st.caption(f"共 {len(meetings)} 個 meeting")
-
         for m in meetings:
             date = m["created_at"][:16].replace("T", " ")
             client = m.get("client") or "—"
@@ -251,12 +381,48 @@ with tab_history:
             duration_min = (m.get("duration_seconds") or 0) / 60
 
             with st.expander(f"📅 {date} · {client} / {project} · {duration_min:.1f} 分鐘"):
-                # Load full meeting on demand
                 full = db.get_meeting(m["id"], user["id"])
                 if full:
                     st.markdown(full["summary"])
-                    col1, col2 = st.columns([1, 5])
-                    with col1:
-                        if st.button("🗑️ 刪除", key=f"del_{m['id']}"):
+                    col_md, col_word, col_pdf, col_del = st.columns([1, 1, 1, 1])
+                    base_name = (client or "meeting").replace(" ", "_")
+
+                    with col_md:
+                        st.download_button(
+                            "📝 MD",
+                            full["summary"],
+                            file_name=f"{base_name}_紀要.md",
+                            mime="text/markdown",
+                            key=f"md_{m['id']}",
+                            use_container_width=True,
+                        )
+                    with col_word:
+                        try:
+                            docx_bytes = cloud_exporters.md_to_docx_bytes(full["summary"])
+                            st.download_button(
+                                "📄 Word",
+                                docx_bytes,
+                                file_name=f"{base_name}_紀要.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                key=f"docx_{m['id']}",
+                                use_container_width=True,
+                            )
+                        except Exception:
+                            pass
+                    with col_pdf:
+                        try:
+                            pdf_bytes = cloud_exporters.md_to_pdf_bytes(full["summary"])
+                            st.download_button(
+                                "📕 PDF",
+                                pdf_bytes,
+                                file_name=f"{base_name}_紀要.pdf",
+                                mime="application/pdf",
+                                key=f"pdf_{m['id']}",
+                                use_container_width=True,
+                            )
+                        except Exception:
+                            pass
+                    with col_del:
+                        if st.button("🗑️ 刪除", key=f"del_{m['id']}", use_container_width=True):
                             db.delete_meeting(m["id"], user["id"])
                             st.rerun()
