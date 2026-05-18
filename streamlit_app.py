@@ -41,53 +41,229 @@ st.set_page_config(
     },
 )
 
-# ============ Style - professional + compact ============
+# ============ Style - modern card-based design (cyan brand) ============
 st.markdown("""
 <style>
-    /* Layout - compact (no scroll on entry) */
+    /* ============ Global ============ */
     .main .block-container {
         padding-top: 1rem;
-        padding-bottom: 1rem;
-        max-width: 800px;
+        padding-bottom: 2rem;
+        max-width: 920px;
     }
-    .stApp { background: #fafbfc; }
-
-    /* Tighter spacing */
-    .element-container { margin-bottom: 0.3rem !important; }
-    [data-testid="stVerticalBlock"] > div { gap: 0.5rem; }
-
-    /* Compact file uploader */
-    [data-testid="stFileUploaderDropzone"] {
-        padding: 0.6rem 1rem !important;
-        min-height: 60px !important;
-    }
-    [data-testid="stFileUploaderDropzoneInstructions"] {
-        font-size: 0.8rem;
-    }
-    [data-testid="stFileUploaderDropzoneInstructions"] > div > small {
-        font-size: 0.72rem;
+    .stApp {
+        background:
+            radial-gradient(900px circle at 0% 0%, rgba(6, 182, 212, 0.04), transparent 50%),
+            radial-gradient(700px circle at 100% 100%, rgba(168, 85, 247, 0.03), transparent 50%),
+            #fafafa;
     }
 
-    /* Compact text inputs */
-    .stTextInput input {
-        padding: 0.4rem 0.7rem !important;
-        font-size: 0.9rem;
-    }
-    .stTextInput label {
+    /* ============ Headings ============ */
+    h1, h2, h3, h4, h5, h6 { color: #18181b; font-weight: 600; }
+    h1 { font-size: 1.4rem !important; }
+    h2 { font-size: 1.1rem !important; }
+    h3 { font-size: 1rem !important; }
+    h4 { font-size: 0.95rem !important; }
+    h5 {
         font-size: 0.78rem !important;
-        margin-bottom: 0.1rem !important;
+        color: #71717a !important;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: 600 !important;
+        margin: 1rem 0 0.5rem 0 !important;
     }
 
-    /* Compact tabs */
+    /* ============ Buttons (override Streamlit red default) ============ */
+    .stButton button {
+        border-radius: 10px;
+        font-weight: 500;
+        font-size: 0.9rem;
+        border: 1px solid #e4e4e7;
+        background: white;
+        color: #3f3f46;
+        transition: all 0.15s;
+    }
+    .stButton button:hover {
+        border-color: #06b6d4;
+        color: #06b6d4;
+    }
+    .stButton button[kind="primary"],
+    .stButton button[data-testid="baseButton-primary"] {
+        background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%) !important;
+        color: white !important;
+        border: none !important;
+        font-weight: 600 !important;
+        box-shadow: 0 4px 12px rgba(6, 182, 212, 0.25) !important;
+    }
+    .stButton button[kind="primary"]:hover,
+    .stButton button[data-testid="baseButton-primary"]:hover {
+        background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%) !important;
+        box-shadow: 0 6px 16px rgba(6, 182, 212, 0.35) !important;
+        transform: translateY(-1px);
+    }
+    .stFormSubmitButton button[kind="primaryFormSubmit"],
+    .stForm button[kind="primary"] {
+        background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%) !important;
+        color: white !important;
+        border: none !important;
+        font-weight: 600 !important;
+    }
+
+    /* ============ Download buttons ============ */
+    .stDownloadButton button {
+        background: white;
+        border: 1px solid #e4e4e7;
+        color: #3f3f46;
+        font-size: 0.85rem;
+        border-radius: 10px;
+    }
+    .stDownloadButton button:hover {
+        border-color: #06b6d4;
+        color: #06b6d4;
+    }
+
+    /* ============ Form elements ============ */
+    .stTextInput input, .stTextArea textarea {
+        border-radius: 10px !important;
+        border: 1px solid #e4e4e7 !important;
+        padding: 0.55rem 0.85rem !important;
+        font-size: 0.9rem !important;
+        background: white !important;
+        transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .stTextInput input:focus, .stTextArea textarea:focus {
+        border-color: #06b6d4 !important;
+        box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1) !important;
+        outline: none !important;
+    }
+    .stTextInput label, .stSelectbox label, .stTextArea label, .stDateInput label {
+        font-size: 0.82rem !important;
+        font-weight: 500 !important;
+        color: #52525b !important;
+        margin-bottom: 0.25rem !important;
+    }
+    .stSelectbox [data-baseweb="select"] > div {
+        border-radius: 10px !important;
+        border: 1px solid #e4e4e7 !important;
+        background: white !important;
+    }
+    .stDateInput input {
+        border-radius: 10px !important;
+        border: 1px solid #e4e4e7 !important;
+        background: white !important;
+    }
+
+    /* ============ File uploader ============ */
+    [data-testid="stFileUploaderDropzone"] {
+        padding: 1rem !important;
+        min-height: 75px !important;
+        border-radius: 12px !important;
+        border: 2px dashed #d4d4d8 !important;
+        background: rgba(6, 182, 212, 0.02) !important;
+        transition: all 0.15s;
+    }
+    [data-testid="stFileUploaderDropzone"]:hover {
+        border-color: #06b6d4 !important;
+        background: rgba(6, 182, 212, 0.04) !important;
+    }
+    [data-testid="stFileUploaderDropzoneInstructions"] { font-size: 0.85rem; }
+    [data-testid="stFileUploaderDropzoneInstructions"] > div > small { font-size: 0.72rem; }
+
+    /* ============ Tabs ============ */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 0;
+        gap: 4px;
         padding: 0;
+        border-bottom: 1px solid #e4e4e7;
     }
     .stTabs [data-baseweb="tab"] {
-        padding: 0.4rem 1rem;
+        padding: 0.5rem 1.2rem;
         font-size: 0.9rem;
+        font-weight: 500;
+        color: #71717a;
+        background: transparent;
+        border-radius: 8px 8px 0 0;
     }
-    .stTabs [data-baseweb="tab-panel"] { padding-top: 0.5rem; }
+    .stTabs [aria-selected="true"] {
+        color: #06b6d4 !important;
+        font-weight: 600 !important;
+    }
+    .stTabs [data-baseweb="tab-highlight"] { background: #06b6d4 !important; }
+    .stTabs [data-baseweb="tab-panel"] { padding-top: 1rem; }
+
+    /* ============ Expanders (history meetings) ============ */
+    [data-testid="stExpander"] {
+        border: 1px solid #e4e4e7 !important;
+        border-radius: 12px !important;
+        background: white !important;
+        margin-bottom: 0.5rem;
+    }
+    [data-testid="stExpanderToggleIcon"] { color: #06b6d4 !important; }
+
+    /* ============ Metrics (dashboard) ============ */
+    [data-testid="stMetric"] {
+        background: white;
+        padding: 1rem 1.2rem;
+        border-radius: 12px;
+        border: 1px solid #e4e4e7;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 0.78rem !important;
+        color: #71717a !important;
+        font-weight: 500;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1.6rem !important;
+        font-weight: 700 !important;
+        color: #18181b !important;
+    }
+
+    /* ============ Alerts / info boxes ============ */
+    .stAlert {
+        border-radius: 12px !important;
+        border-left: 3px solid #06b6d4 !important;
+        font-size: 0.88rem !important;
+    }
+
+    /* ============ Captions ============ */
+    .stCaption, .stMarkdown small { color: #71717a; font-size: 0.78rem; }
+
+    /* ============ Hide Streamlit chrome ============ */
+    header[data-testid="stHeader"] { display: none !important; height: 0 !important; }
+    div[data-testid="stToolbar"] { display: none !important; }
+    footer { display: none !important; }
+    #MainMenu { visibility: hidden; display: none !important; }
+    [data-testid="stDecoration"] { display: none !important; }
+    .stApp > header { display: none !important; }
+    .main .block-container,
+    [data-testid="stAppViewBlockContainer"] {
+        padding-top: 0.8rem !important;
+    }
+
+    /* Misc tightening */
+    div[data-testid="stForm"] { border: none; padding: 0; }
+    [data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
+    .element-container { margin: 0 !important; padding: 0 !important; }
+
+    /* ============ Custom card classes ============ */
+    .settings-card {
+        background: white;
+        border: 1px solid #e4e4e7;
+        border-radius: 14px;
+        padding: 1.2rem 1.4rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .settings-card-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #18181b;
+        margin-bottom: 0.2rem;
+    }
+    .settings-card-desc {
+        font-size: 0.78rem;
+        color: #71717a;
+        margin-bottom: 1rem;
+    }
 
     /* Headings — smaller, more professional */
     h1 {
@@ -1095,54 +1271,93 @@ with tab_dashboard:
             st.markdown(kw_text)
 
 
-# ============ Tab 4: Settings ============
+# ============ Tab 4: Settings (Redesigned Card Layout) ============
 with tab_settings:
-    st.markdown("### ⚙️ 個人化設定")
-    st.caption("呢度設定會應用喺**未來嘅新會議**處理，等 AI 識別你公司專屬嘅 jargon。")
+    st.markdown(
+        '<div style="margin-bottom:1.2rem;">'
+        '<h2 style="margin:0;">⚙️ 個人化設定</h2>'
+        '<p style="color:#71717a;font-size:0.85rem;margin:0.2rem 0 0 0;">'
+        'AI 會用呢啲資料為你公司專屬訂制摘要、識別 jargon、套用業界術語。</p>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
     with st.form("settings_form"):
-        new_company = st.text_input(
-            "🏢 公司名稱（你嘅僱主）",
-            value=user_settings.get("company_name", ""),
-            placeholder="例：陳氏會計師樓",
-            help="AI 會 reference 你嘅公司",
-        )
+        # === Card 1: 公司資料（左） + 預設選項（右）===
+        col_left, col_right = st.columns(2)
 
-        industry_keys = list(db.INDUSTRIES.keys())
-        try:
-            ind_idx = industry_keys.index(user_settings.get("industry", "generic"))
-        except ValueError:
-            ind_idx = 0
-        new_industry = st.selectbox(
-            "🎯 行業類型",
-            options=industry_keys,
-            format_func=lambda k: db.INDUSTRIES[k],
-            index=ind_idx,
-            help="影響摘要嘅角度同術語",
-        )
+        with col_left:
+            st.markdown(
+                '<div class="settings-card-title">🏢 公司資料</div>'
+                '<div class="settings-card-desc">AI 會 reference 你嘅 employer</div>',
+                unsafe_allow_html=True,
+            )
+            new_company = st.text_input(
+                "公司名稱",
+                value=user_settings.get("company_name", ""),
+                placeholder="例：陳氏會計師樓",
+                label_visibility="collapsed",
+            )
 
+            industry_keys = list(db.INDUSTRIES.keys())
+            try:
+                ind_idx = industry_keys.index(user_settings.get("industry", "generic"))
+            except ValueError:
+                ind_idx = 0
+            new_industry = st.selectbox(
+                "行業類型",
+                options=industry_keys,
+                format_func=lambda k: db.INDUSTRIES[k],
+                index=ind_idx,
+            )
+
+        with col_right:
+            st.markdown(
+                '<div class="settings-card-title">📏 預設選項</div>'
+                '<div class="settings-card-desc">新會議嘅 default 設定</div>',
+                unsafe_allow_html=True,
+            )
+            length_keys = list(db.SUMMARY_LENGTHS.keys())
+            try:
+                len_idx = length_keys.index(user_settings.get("summary_length", "medium"))
+            except ValueError:
+                len_idx = 1
+            new_length = st.selectbox(
+                "預設摘要長度",
+                options=length_keys,
+                format_func=lambda k: db.SUMMARY_LENGTHS[k],
+                index=len_idx,
+            )
+            # 預留位置畀將來其他 default option
+            st.caption("💡 每次處理會議時都可以另揀")
+
+        st.markdown("<div style='margin: 0.5rem 0;'></div>", unsafe_allow_html=True)
+
+        # === Card 2: Jargon dictionary（full width）===
+        st.markdown(
+            '<div class="settings-card-title">📚 自定術語字典</div>'
+            '<div class="settings-card-desc">'
+            '加入你常用嘅客戶名、員工名、行業術語。AI 會特別留意呢啲詞，'
+            '識別準確度大幅提升。'
+            '</div>',
+            unsafe_allow_html=True,
+        )
         new_jargon = st.text_area(
-            "📚 自定 jargon / 人名 / 客戶名",
+            "Jargon",
             value=user_settings.get("jargon", ""),
-            placeholder="例：HKFRS 18、Peter Chan、ABC Holdings、CFR、香港金管局...",
-            height=100,
-            help="用逗號或新行分隔。AI 會特別留意呢啲詞，提升識別準確度。",
+            placeholder="例：HKFRS 18、Peter Chan、ABC Holdings、CFR、香港金管局、Cap. 622...",
+            height=110,
+            label_visibility="collapsed",
         )
 
-        length_keys = list(db.SUMMARY_LENGTHS.keys())
-        try:
-            len_idx = length_keys.index(user_settings.get("summary_length", "medium"))
-        except ValueError:
-            len_idx = 1
-        new_length = st.selectbox(
-            "📏 預設摘要長度",
-            options=length_keys,
-            format_func=lambda k: db.SUMMARY_LENGTHS[k],
-            index=len_idx,
-            help="新會議嘅 default。每次處理時都可以另揀。",
-        )
+        st.markdown("<div style='margin: 1rem 0;'></div>", unsafe_allow_html=True)
 
-        submitted = st.form_submit_button("💾 儲存設定", type="primary", use_container_width=True)
+        # === Save button ===
+        submitted = st.form_submit_button(
+            "💾 儲存設定",
+            type="primary",
+            use_container_width=True,
+        )
         if submitted:
             try:
                 db.update_user_settings(
@@ -1157,9 +1372,23 @@ with tab_settings:
             except Exception as e:
                 st.error(f"儲存失敗：{e}")
 
-    # 帳號資料
-    st.markdown("---")
-    st.markdown("##### 👤 帳號資料")
-    st.text_input("Email", value=user["email"], disabled=True, key="acc_email")
-    st.text_input("Plan", value=plan.upper(), disabled=True, key="acc_plan")
-    st.caption(f"User ID: `{user['id']}`")
+    # ============ 帳號資料 (separate card) ============
+    st.markdown(
+        '<div style="margin: 1.5rem 0 0.8rem 0;">'
+        '<div class="settings-card-title">👤 帳號資料</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    info_col1, info_col2 = st.columns(2)
+    with info_col1:
+        st.text_input("Email", value=user["email"], disabled=True, key="acc_email")
+    with info_col2:
+        plan_display = {"free": "🆓 FREE", "pro": "⭐ PRO", "team": "👥 TEAM"}.get(plan, plan.upper())
+        st.text_input("Plan", value=plan_display, disabled=True, key="acc_plan")
+
+    st.markdown(
+        f'<div style="margin-top:0.3rem;font-size:0.72rem;color:#a1a1aa;">'
+        f'User ID: <code style="font-size:0.7rem;">{user["id"]}</code></div>',
+        unsafe_allow_html=True,
+    )
