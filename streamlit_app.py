@@ -23,6 +23,25 @@ def get_cached_upgrade_url(user_id: str, email: str, plan: str = "pro") -> str |
         return None
 
 
+def is_garbage_output(text: str) -> bool:
+    """偵測 AI hallucinate 嘅 garbage（重複同一個字）"""
+    import re
+    from collections import Counter
+
+    if not text or len(text) < 80:
+        return False
+    # Strip whitespace + markdown
+    clean = re.sub(r"[\s\n#*\-|]+", "", text)
+    if len(clean) < 80:
+        return False
+    # 如果單一字佔超過 40% → garbage
+    most_common = Counter(clean).most_common(1)
+    if not most_common:
+        return False
+    char, count = most_common[0]
+    return (count / len(clean)) > 0.4
+
+
 def show_friendly_error(e: Exception, context: str = "處理"):
     """Display user-friendly error for common Gemini issues"""
     err_msg = str(e)
@@ -832,6 +851,24 @@ with tab_new:
                             custom_jargon=user_settings.get("jargon", ""),
                             company_name=user_settings.get("company_name", ""),
                         )
+
+                        # 🚨 Quality check：偵測 AI hallucinate（重複字 garbage）
+                        if is_garbage_output(result["summary"]):
+                            st.warning(
+                                "⚠️ **偵測到錄音質量問題**\n\n"
+                                "AI 嘅輸出係重複字符（譬如「喂喂喂...」），"
+                                "通常代表：\n"
+                                "- 麥克風收唔到聲音\n"
+                                "- 背景噪音太大 / 講者聲音太細\n"
+                                "- 錄音太短\n\n"
+                                "**呢次冇 save 落資料庫**。請：\n"
+                                "1. 確保麥克風正常\n"
+                                "2. 安靜環境重新錄音\n"
+                                "3. 至少錄 15 秒，講大聲清楚"
+                            )
+                            status.update(label="⚠️ 質量問題", state="error")
+                            st.stop()
+
                         st.write("✅ AI 整理完成")
                         st.write("💾 儲存到資料庫...")
                         saved = db.save_meeting(
