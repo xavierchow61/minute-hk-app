@@ -15,12 +15,12 @@ def invalidate_cache():
     st.cache_data.clear()
 
 # Free tier 限額
-FREE_MONTHLY_SECONDS = 1800        # 30 min/月
-FREE_DAILY_SECONDS = 600           # 10 min/日（防一次過用晒）
+FREE_MONTHLY_SECONDS = 3600        # 60 min/月
+FREE_DAILY_SECONDS = 600           # 10 min/日
 
-# Pro tier 限額（防 abuse / cost burning）
-PRO_MONTHLY_SECONDS = float("inf")
-PRO_DAILY_SECONDS = 14400          # 4 小時/日 上限（防盜用）
+# Pro tier 限額
+PRO_MONTHLY_SECONDS = 60000        # 1000 min/月
+PRO_DAILY_SECONDS = 1800           # 30 min/日
 
 # Single file 限制
 MAX_SINGLE_FILE_SECONDS = 7200     # 單一檔案最多 2 小時

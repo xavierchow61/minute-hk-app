@@ -23,6 +23,16 @@ def get_cached_upgrade_url(user_id: str, email: str, plan: str = "pro") -> str |
         return None
 
 
+def is_pro_user(user_plan: str) -> bool:
+    """判斷係咪 Pro/Team 用戶（可以用 advanced features）"""
+    return user_plan in ("pro", "team")
+
+
+def show_pro_locked_toast(feature_name: str = "呢個功能"):
+    """顯示 toast 提示用戶升級"""
+    st.toast(f"🔒 {feature_name} 係 Pro 功能 — 撳上面 🆓 FREE 升級", icon="⭐")
+
+
 def is_garbage_output(text: str) -> bool:
     """偵測 AI hallucinate 嘅 garbage（重複同一個字）"""
     import re
@@ -735,10 +745,21 @@ with ubar_outer:
                     unsafe_allow_html=True,
                 )
                 st.markdown(
-                    "✓ 無限錄音時長  \n"
-                    "✓ 全部 AI 功能（翻譯、語氣、PPT）  \n"
-                    "✓ 優先處理 + 更高每日使用限制  \n"
-                    "✓ Email 支援"
+                    "**用量**  \n"
+                    "✓ 1000 分鐘/月（Free: 60）  \n"
+                    "✓ 30 分鐘/日（Free: 10）  \n\n"
+                    "**進階 AI**  \n"
+                    "✓ 🎭 語氣分析  \n"
+                    "✓ 🌐 6 國語言翻譯（Free: 英/簡中）  \n"
+                    "✓ 📊 PPT 生成 + PDF 匯出  \n"
+                    "✓ 🔗 繼續會議（AI 合併）  \n\n"
+                    "**整合**  \n"
+                    "✓ 📅 Google Calendar / Outlook 一鍵 add  \n"
+                    "✓ 🗂️ Industry-specific prompts  \n"
+                    "✓ 🏷️ 自定 jargon dictionary  \n"
+                    "✓ 📈 Dashboard + 詞雲  \n"
+                    "✓ 🔍 過往會議搜尋 + date filter  \n"
+                    "✓ 📧 Email 支援"
                 )
 
                 # ⚙️ Detailed Stripe status check (debug 用)
@@ -835,6 +856,9 @@ with st.sidebar:
 # Load user settings (used by 新會議 + 設定 tab)
 user_settings = db.get_user_settings(user["id"])
 
+# Pro user check (used throughout)
+IS_PRO = is_pro_user(plan)
+
 # Main content tabs
 tab_new, tab_history, tab_dashboard, tab_settings = st.tabs([
     "🎙️ 新會議", "📚 過往會議", "📊 Dashboard", "⚙️ 設定"
@@ -850,21 +874,33 @@ with tab_new:
         project_name = st.text_input("項目", placeholder="2026 audit",
                                      label_visibility="collapsed")
     with col3:
-        # 紀要長度 selector (default 用 user settings)
-        length_keys = list(db.SUMMARY_LENGTHS.keys())
-        default_length = user_settings.get("summary_length", "medium")
-        try:
-            default_idx = length_keys.index(default_length)
-        except ValueError:
-            default_idx = 1
-        summary_length = st.selectbox(
-            "長度",
-            options=length_keys,
-            format_func=lambda k: db.SUMMARY_LENGTHS[k].split("（")[0],
-            index=default_idx,
-            label_visibility="collapsed",
-            key="meeting_length",
-        )
+        # 紀要長度 selector — Pro 至可揀，Free 強制 medium
+        if IS_PRO:
+            length_keys = list(db.SUMMARY_LENGTHS.keys())
+            default_length = user_settings.get("summary_length", "medium")
+            try:
+                default_idx = length_keys.index(default_length)
+            except ValueError:
+                default_idx = 1
+            summary_length = st.selectbox(
+                "長度",
+                options=length_keys,
+                format_func=lambda k: db.SUMMARY_LENGTHS[k].split("（")[0],
+                index=default_idx,
+                label_visibility="collapsed",
+                key="meeting_length",
+            )
+        else:
+            summary_length = "medium"
+            st.selectbox(
+                "長度",
+                options=["🔒 中（Pro）"],
+                index=0,
+                disabled=True,
+                label_visibility="collapsed",
+                key="meeting_length_free",
+                help="⭐ Pro 用戶可揀短/中/長",
+            )
 
     # 兩個 input 方法 tabs
     in_tab_upload, in_tab_record = st.tabs(["📁 上傳檔案", "🎙️ 直接錄音"])
@@ -1000,22 +1036,32 @@ with tab_new:
                 st.button("📄 Word (錯)", disabled=True, use_container_width=True, help=str(e))
 
         with col_pdf:
-            try:
-                pdf_bytes = cloud_exporters.md_to_pdf_bytes(st.session_state.last_summary)
-                st.download_button(
-                    "📕 PDF",
-                    pdf_bytes,
-                    file_name=f"{base_name}_紀要.pdf",
-                    mime="application/pdf",
-                    use_container_width=True,
-                )
-            except Exception as e:
-                st.button("📕 PDF (錯)", disabled=True, use_container_width=True, help=str(e))
+            if IS_PRO:
+                try:
+                    pdf_bytes = cloud_exporters.md_to_pdf_bytes(st.session_state.last_summary)
+                    st.download_button(
+                        "📕 PDF",
+                        pdf_bytes,
+                        file_name=f"{base_name}_紀要.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+                except Exception as e:
+                    st.button("📕 PDF (錯)", disabled=True, use_container_width=True, help=str(e))
+            else:
+                if st.button("🔒 PDF", use_container_width=True, key="pdf_locked_main",
+                             help="⭐ 升級 Pro 解鎖 PDF 匯出"):
+                    show_pro_locked_toast("PDF 匯出")
 
         with col_ppt:
-            if st.button("📊 PPT", use_container_width=True, key="ppt_main"):
-                st.session_state._gen_pptx_main = True
-                st.toast("📊 AI 生成 PPT 中... (約 10-20 秒)", icon="🤖")
+            if IS_PRO:
+                if st.button("📊 PPT", use_container_width=True, key="ppt_main"):
+                    st.session_state._gen_pptx_main = True
+                    st.toast("📊 AI 生成 PPT 中... (約 10-20 秒)", icon="🤖")
+            else:
+                if st.button("🔒 PPT", use_container_width=True, key="ppt_locked_main",
+                             help="⭐ 升級 Pro 解鎖 PPT 生成"):
+                    show_pro_locked_toast("PPT 生成")
 
         with col_ics:
             if st.button("📅 加 Calendar", use_container_width=True, key="ics_main"):
@@ -1097,9 +1143,19 @@ with tab_new:
                     )
                     btn_col1, btn_col2 = st.columns(2)
                     with btn_col1:
-                        st.link_button("🟦 Google Calendar", g_url, use_container_width=True)
+                        if IS_PRO:
+                            st.link_button("🟦 Google Calendar", g_url, use_container_width=True)
+                        else:
+                            if st.button("🔒 Google Calendar", use_container_width=True,
+                                         key=f"g_locked_{i}", help="⭐ Pro 功能"):
+                                show_pro_locked_toast("Google Calendar 一鍵 add")
                     with btn_col2:
-                        st.link_button("🟪 Outlook", o_url, use_container_width=True)
+                        if IS_PRO:
+                            st.link_button("🟪 Outlook", o_url, use_container_width=True)
+                        else:
+                            if st.button("🔒 Outlook", use_container_width=True,
+                                         key=f"o_locked_{i}", help="⭐ Pro 功能"):
+                                show_pro_locked_toast("Outlook 一鍵 add")
                     st.markdown("<hr style='margin:0.5rem 0; opacity:0.3;'>", unsafe_allow_html=True)
 
                 # 整體 ICS download
@@ -1118,16 +1174,21 @@ with tab_new:
 
         col_t, col_s = st.columns(2)
 
-        # --- Translate ---
+        # --- Translate (Free: English + 簡中 only; Pro: all 6) ---
         with col_t:
+            if IS_PRO:
+                translate_options = list(ai.TRANSLATE_TARGETS.values())
+            else:
+                # Free user 只可揀 English + Simplified Chinese
+                translate_options = ["English", "简体中文"]
             target_label = st.selectbox(
                 "🌐 翻譯紀要",
-                options=list(ai.TRANSLATE_TARGETS.values()),
+                options=translate_options,
                 key="translate_target",
                 label_visibility="collapsed",
+                help="⭐ Pro 用戶可揀 6 國語言" if not IS_PRO else None,
             )
             if st.button("🌐 翻譯", use_container_width=True, key="btn_translate"):
-                # 揾返 target code
                 target_code = next(
                     (k for k, v in ai.TRANSLATE_TARGETS.items() if v == target_label),
                     "en"
@@ -1140,7 +1201,7 @@ with tab_new:
                     except Exception as e:
                         st.error(f"翻譯失敗：{e}")
 
-        # --- Sentiment ---
+        # --- Sentiment (Pro only) ---
         with col_s:
             st.markdown(
                 "<div style='height:38px;display:flex;align-items:center;color:#64748b;font-size:0.85rem;'>"
@@ -1148,13 +1209,18 @@ with tab_new:
                 "</div>",
                 unsafe_allow_html=True,
             )
-            if st.button("🎭 語氣分析", use_container_width=True, key="btn_sentiment"):
-                with st.spinner("AI 分析中..."):
-                    try:
-                        sentiment = ai.analyze_sentiment(st.session_state.last_summary)
-                        st.session_state.last_sentiment = sentiment
-                    except Exception as e:
-                        st.error(f"分析失敗：{e}")
+            if IS_PRO:
+                if st.button("🎭 語氣分析", use_container_width=True, key="btn_sentiment"):
+                    with st.spinner("AI 分析中..."):
+                        try:
+                            sentiment = ai.analyze_sentiment(st.session_state.last_summary)
+                            st.session_state.last_sentiment = sentiment
+                        except Exception as e:
+                            st.error(f"分析失敗：{e}")
+            else:
+                if st.button("🔒 語氣分析", use_container_width=True, key="btn_sentiment_locked",
+                             help="⭐ 升級 Pro 解鎖"):
+                    show_pro_locked_toast("語氣分析")
 
         # 顯示翻譯結果
         if st.session_state.get("last_translation"):
@@ -1284,23 +1350,33 @@ with tab_history:
                         except Exception:
                             pass
                     with col_pdf:
-                        try:
-                            pdf_bytes = cloud_exporters.md_to_pdf_bytes(full["summary"])
-                            st.download_button(
-                                "📕 PDF",
-                                pdf_bytes,
-                                file_name=f"{base_name}_紀要.pdf",
-                                mime="application/pdf",
-                                key=f"pdf_{m['id']}",
-                                use_container_width=True,
-                            )
-                        except Exception:
-                            pass
+                        if IS_PRO:
+                            try:
+                                pdf_bytes = cloud_exporters.md_to_pdf_bytes(full["summary"])
+                                st.download_button(
+                                    "📕 PDF",
+                                    pdf_bytes,
+                                    file_name=f"{base_name}_紀要.pdf",
+                                    mime="application/pdf",
+                                    key=f"pdf_{m['id']}",
+                                    use_container_width=True,
+                                )
+                            except Exception:
+                                pass
+                        else:
+                            if st.button("🔒 PDF", key=f"pdf_lk_{m['id']}",
+                                         use_container_width=True, help="⭐ Pro 功能"):
+                                show_pro_locked_toast("PDF 匯出")
                     with col_ppt:
-                        # 只 set flag，processing 喺 columns 之後
-                        if st.button("📊 PPT", key=f"ppt_btn_{m['id']}", use_container_width=True):
-                            st.session_state[f"_h_gen_pptx_{m['id']}"] = True
-                            st.toast("📊 PPT 生成中... (10-20s)", icon="🤖")
+                        if IS_PRO:
+                            if st.button("📊 PPT", key=f"ppt_btn_{m['id']}",
+                                         use_container_width=True):
+                                st.session_state[f"_h_gen_pptx_{m['id']}"] = True
+                                st.toast("📊 PPT 生成中... (10-20s)", icon="🤖")
+                        else:
+                            if st.button("🔒 PPT", key=f"ppt_lk_{m['id']}",
+                                         use_container_width=True, help="⭐ Pro 功能"):
+                                show_pro_locked_toast("PPT 生成")
                     with col_del:
                         if st.button("🗑️ 刪除", key=f"del_{m['id']}", use_container_width=True):
                             db.delete_meeting(m["id"], user["id"])
@@ -1336,13 +1412,18 @@ with tab_history:
                     st.markdown("**🤖 AI 進階分析**")
                     h_col_t, h_col_s = st.columns(2)
 
-                    # --- Translate ---
+                    # --- Translate (Free: 2 languages; Pro: all 6) ---
                     with h_col_t:
+                        if IS_PRO:
+                            h_tr_options = list(ai.TRANSLATE_TARGETS.values())
+                        else:
+                            h_tr_options = ["English", "简体中文"]
                         target_label = st.selectbox(
                             "翻譯為",
-                            options=list(ai.TRANSLATE_TARGETS.values()),
+                            options=h_tr_options,
                             key=f"h_tr_target_{m['id']}",
                             label_visibility="collapsed",
+                            help="⭐ Pro 用戶可揀 6 國語言" if not IS_PRO else None,
                         )
                         if st.button(
                             "🌐 翻譯紀要",
@@ -1362,7 +1443,7 @@ with tab_history:
                                 except Exception as e:
                                     st.error(f"翻譯失敗：{e}")
 
-                    # --- Sentiment ---
+                    # --- Sentiment (Pro only) ---
                     with h_col_s:
                         st.markdown(
                             "<div style='height:38px;display:flex;align-items:center;"
@@ -1371,17 +1452,26 @@ with tab_history:
                             "</div>",
                             unsafe_allow_html=True,
                         )
-                        if st.button(
-                            "🎭 語氣分析",
-                            key=f"h_btn_sent_{m['id']}",
-                            use_container_width=True,
-                        ):
-                            with st.spinner("分析中..."):
-                                try:
-                                    sent = ai.analyze_sentiment(full["summary"])
-                                    st.session_state[f"h_sent_{m['id']}"] = sent
-                                except Exception as e:
-                                    st.error(f"分析失敗：{e}")
+                        if IS_PRO:
+                            if st.button(
+                                "🎭 語氣分析",
+                                key=f"h_btn_sent_{m['id']}",
+                                use_container_width=True,
+                            ):
+                                with st.spinner("分析中..."):
+                                    try:
+                                        sent = ai.analyze_sentiment(full["summary"])
+                                        st.session_state[f"h_sent_{m['id']}"] = sent
+                                    except Exception as e:
+                                        st.error(f"分析失敗：{e}")
+                        else:
+                            if st.button(
+                                "🔒 語氣分析",
+                                key=f"h_btn_sent_lk_{m['id']}",
+                                use_container_width=True,
+                                help="⭐ Pro 功能",
+                            ):
+                                show_pro_locked_toast("語氣分析")
 
                     # --- 顯示翻譯結果 ---
                     if st.session_state.get(f"h_tr_{m['id']}"):
@@ -1437,12 +1527,21 @@ with tab_history:
                                     st.error(f"失敗：{e}")
 
                     with h_col_cont:
-                        if st.button(
-                            "🔗 繼續呢個會議",
-                            key=f"h_btn_cont_{m['id']}",
-                            use_container_width=True,
-                        ):
-                            st.session_state[f"h_cont_open_{m['id']}"] = True
+                        if IS_PRO:
+                            if st.button(
+                                "🔗 繼續呢個會議",
+                                key=f"h_btn_cont_{m['id']}",
+                                use_container_width=True,
+                            ):
+                                st.session_state[f"h_cont_open_{m['id']}"] = True
+                        else:
+                            if st.button(
+                                "🔒 繼續會議",
+                                key=f"h_btn_cont_lk_{m['id']}",
+                                use_container_width=True,
+                                help="⭐ Pro 功能",
+                            ):
+                                show_pro_locked_toast("繼續會議")
 
                     # ICS download
                     if st.session_state.get(f"h_ics_{m['id']}"):
@@ -1534,9 +1633,14 @@ with tab_dashboard:
 
         st.markdown("---")
 
-        # === Monthly trend ===
+        # === Monthly trend (Pro only) ===
         st.markdown("##### 📈 每月會議數量")
-        if stats["monthly_counts"] and len(stats["monthly_counts"]) > 1:
+        if not IS_PRO:
+            st.info(
+                "🔒 **每月趨勢圖** 係 Pro 功能。"
+                "撳上面 🆓 FREE badge 升級解鎖。"
+            )
+        elif stats["monthly_counts"] and len(stats["monthly_counts"]) > 1:
             import pandas as pd
             df_trend = pd.DataFrame({
                 "月份": list(stats["monthly_counts"].keys()),
@@ -1548,7 +1652,6 @@ with tab_dashboard:
                 color="#1e66f5",
             )
         elif stats["monthly_counts"]:
-            # 只得 1 個月嘅數據 → 顯示 inline metric (chart 太醜)
             month, count = next(iter(stats["monthly_counts"].items()))
             st.info(f"📅 **{month}**：{count} 個 meeting（要至少 2 個月先有 trend chart）")
         else:
@@ -1572,10 +1675,15 @@ with tab_dashboard:
             else:
                 st.caption("（暫時冇 project tag）")
 
-        # === Word Cloud ===
+        # === Word Cloud (Pro only) ===
         st.markdown("---")
         st.markdown("##### ☁️ 詞雲 (Top Keywords)")
-        if st.button("🔄 生成詞雲", key="gen_wordcloud"):
+        if not IS_PRO:
+            st.info(
+                "🔒 **詞雲分析** 係 Pro 功能。"
+                "撳上面 🆓 FREE badge 升級解鎖。"
+            )
+        elif st.button("🔄 生成詞雲", key="gen_wordcloud"):
             with st.spinner("分析所有會議文字..."):
                 try:
                     img_bytes = dashboard.generate_wordcloud_image(
@@ -1624,40 +1732,71 @@ with tab_settings:
             )
 
         with col_b:
-            industry_keys = list(db.INDUSTRIES.keys())
+            if IS_PRO:
+                industry_keys = list(db.INDUSTRIES.keys())
+                try:
+                    ind_idx = industry_keys.index(user_settings.get("industry", "generic"))
+                except ValueError:
+                    ind_idx = 0
+                new_industry = st.selectbox(
+                    "🎯 行業類型",
+                    options=industry_keys,
+                    format_func=lambda k: db.INDUSTRIES[k],
+                    index=ind_idx,
+                )
+            else:
+                new_industry = "generic"
+                st.selectbox(
+                    "🔒 行業類型 (Pro)",
+                    options=["🏢 一般商務"],
+                    index=0,
+                    disabled=True,
+                    help="⭐ Pro 用戶可揀會計/法律/醫療/銷售等",
+                )
+
+        # === Row 2: 預設摘要長度（Pro 至可揀）===
+        if IS_PRO:
+            length_keys = list(db.SUMMARY_LENGTHS.keys())
             try:
-                ind_idx = industry_keys.index(user_settings.get("industry", "generic"))
+                len_idx = length_keys.index(user_settings.get("summary_length", "medium"))
             except ValueError:
-                ind_idx = 0
-            new_industry = st.selectbox(
-                "🎯 行業類型",
-                options=industry_keys,
-                format_func=lambda k: db.INDUSTRIES[k],
-                index=ind_idx,
+                len_idx = 1
+            new_length = st.selectbox(
+                "📏 預設摘要長度",
+                options=length_keys,
+                format_func=lambda k: db.SUMMARY_LENGTHS[k],
+                index=len_idx,
+                help="新會議嘅 default。每次處理時都可以另揀。",
+            )
+        else:
+            new_length = "medium"
+            st.selectbox(
+                "🔒 預設摘要長度 (Pro)",
+                options=["中（標準格式）"],
+                index=0,
+                disabled=True,
+                help="⭐ Pro 用戶可揀短/中/長",
             )
 
-        # === Row 2: 預設摘要長度（full width，下面再加多一行揀）===
-        length_keys = list(db.SUMMARY_LENGTHS.keys())
-        try:
-            len_idx = length_keys.index(user_settings.get("summary_length", "medium"))
-        except ValueError:
-            len_idx = 1
-        new_length = st.selectbox(
-            "📏 預設摘要長度",
-            options=length_keys,
-            format_func=lambda k: db.SUMMARY_LENGTHS[k],
-            index=len_idx,
-            help="新會議嘅 default。每次處理時都可以另揀。",
-        )
-
-        # === Row 3: Jargon（full width）===
-        new_jargon = st.text_area(
-            "📚 自定術語字典 (jargon / 人名 / 客戶名)",
-            value=user_settings.get("jargon", ""),
-            placeholder="例：HKFRS 18、Peter Chan、ABC Holdings、CFR、香港金管局、Cap. 622...",
-            height=100,
-            help="用逗號或新行分隔。AI 會特別留意呢啲詞，識別準確度大幅提升。",
-        )
+        # === Row 3: Jargon (Pro 至 enable) ===
+        if IS_PRO:
+            new_jargon = st.text_area(
+                "📚 自定術語字典 (jargon / 人名 / 客戶名)",
+                value=user_settings.get("jargon", ""),
+                placeholder="例：HKFRS 18、Peter Chan、ABC Holdings、CFR、香港金管局、Cap. 622...",
+                height=100,
+                help="用逗號或新行分隔。AI 會特別留意呢啲詞，識別準確度大幅提升。",
+            )
+        else:
+            new_jargon = ""
+            st.text_area(
+                "🔒 自定術語字典 (Pro)",
+                value="",
+                placeholder="⭐ 升級 Pro 解鎖 — 加入你公司專屬 jargon、客戶名、人名",
+                height=100,
+                disabled=True,
+                help="⭐ Pro 用戶可加 jargon dictionary 大幅提升 AI 識別準確度",
+            )
 
         st.markdown("<div style='margin: 1rem 0;'></div>", unsafe_allow_html=True)
 
