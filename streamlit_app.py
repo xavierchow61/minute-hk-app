@@ -4,6 +4,7 @@ import streamlit as st
 
 import ai
 import auth
+import cloud_calendar
 import cloud_exporters
 import cloud_stripe
 import dashboard
@@ -472,17 +473,40 @@ with tab_new:
             key="meeting_length",
         )
 
-    uploaded = st.file_uploader(
-        "上傳會議錄音",
-        type=["mp3", "m4a", "wav", "mp4", "ogg", "flac", "webm"],
-        help="支援 mp3/m4a/wav/mp4/ogg/flac/webm，最大 200MB",
-        label_visibility="collapsed",
-    )
+    # 兩個 input 方法 tabs
+    in_tab_upload, in_tab_record = st.tabs(["📁 上傳檔案", "🎙️ 直接錄音"])
 
-    if uploaded:
-        file_size_mb = uploaded.size / (1024 * 1024)
-        st.caption(f"📄 `{uploaded.name}` · {file_size_mb:.1f} MB")
-        st.audio(uploaded)
+    with in_tab_upload:
+        uploaded = st.file_uploader(
+            "上傳會議錄音",
+            type=["mp3", "m4a", "wav", "mp4", "ogg", "flac", "webm"],
+            help="支援 mp3/m4a/wav/mp4/ogg/flac/webm，最大 200MB",
+            label_visibility="collapsed",
+            key="audio_upload",
+        )
+
+    with in_tab_record:
+        recorded = st.audio_input(
+            "🎙️ 撳下面 mic 開始錄音",
+            key="audio_record",
+            label_visibility="collapsed",
+        )
+
+    # 揀邊個 input source
+    audio_source = uploaded or recorded
+    is_recording = recorded is not None and uploaded is None
+
+    if audio_source:
+        if is_recording:
+            file_size_mb = len(audio_source.getvalue()) / (1024 * 1024)
+            st.caption(f"🎙️ 錄音 · {file_size_mb:.1f} MB")
+        else:
+            file_size_mb = audio_source.size / (1024 * 1024)
+            st.caption(f"📄 `{audio_source.name}` · {file_size_mb:.1f} MB")
+        st.audio(audio_source)
+
+        # local var name 為咗下面 code 兼容
+        uploaded = audio_source
 
         est_duration_sec = file_size_mb * 60
 
@@ -544,7 +568,7 @@ with tab_new:
         st.markdown(st.session_state.last_summary)
 
         st.markdown("##### 📥 下載")
-        col_md, col_word, col_pdf = st.columns(3)
+        col_md, col_word, col_pdf, col_ics = st.columns(4)
         base_name = st.session_state.get("last_meeting_name", "meeting").replace(" ", "_")
 
         with col_md:
@@ -581,6 +605,36 @@ with tab_new:
                 )
             except Exception as e:
                 st.button("📕 PDF (錯)", disabled=True, use_container_width=True, help=str(e))
+
+        with col_ics:
+            # 📅 ICS file (Calendar export)
+            if st.button("📅 加入 Calendar", use_container_width=True, key="ics_main"):
+                with st.spinner("AI 抽取 action items..."):
+                    try:
+                        items = ai.extract_action_items(st.session_state.last_summary)
+                        if not items:
+                            st.warning("冇 action items 可以加入 calendar")
+                        else:
+                            ics_bytes = cloud_calendar.action_items_to_ics(
+                                items,
+                                meeting_title=base_name,
+                                client=st.session_state.get("last_meeting_name", ""),
+                            )
+                            st.session_state.ics_main = ics_bytes
+                            st.session_state.ics_main_count = len(items)
+                    except Exception as e:
+                        st.error(f"ICS 生成失敗：{e}")
+
+        if st.session_state.get("ics_main"):
+            cnt = st.session_state.get("ics_main_count", 0)
+            st.download_button(
+                f"📥 下載 .ics ({cnt} 個事項)",
+                st.session_state.ics_main,
+                file_name=f"{base_name}_calendar.ics",
+                mime="text/calendar",
+                key="dl_ics_main",
+            )
+            st.caption("💡 Double-click `.ics` → 自動 import 入 Google Calendar / Outlook / Apple Calendar")
 
         # === 🌐 翻譯 + 🎭 語氣分析 ===
         st.markdown("##### 🤖 AI 進階分析")
@@ -847,6 +901,112 @@ with tab_history:
                                 mime="text/markdown",
                                 key=f"h_dl_sent_{m['id']}",
                             )
+
+                    # === 📅 Calendar export + 🔗 Continue meeting ===
+                    st.markdown("**📅 Calendar + 🔗 繼續會議**")
+                    h_col_ics, h_col_cont = st.columns(2)
+
+                    with h_col_ics:
+                        if st.button(
+                            "📅 加入 Calendar",
+                            key=f"h_btn_ics_{m['id']}",
+                            use_container_width=True,
+                        ):
+                            with st.spinner("AI 抽取 action items..."):
+                                try:
+                                    items = ai.extract_action_items(full["summary"])
+                                    if not items:
+                                        st.warning("冇 action items 可以加入")
+                                    else:
+                                        ics_b = cloud_calendar.action_items_to_ics(
+                                            items,
+                                            meeting_title=base_name,
+                                            client=client,
+                                        )
+                                        st.session_state[f"h_ics_{m['id']}"] = ics_b
+                                        st.session_state[f"h_ics_count_{m['id']}"] = len(items)
+                                except Exception as e:
+                                    st.error(f"失敗：{e}")
+
+                    with h_col_cont:
+                        if st.button(
+                            "🔗 繼續呢個會議",
+                            key=f"h_btn_cont_{m['id']}",
+                            use_container_width=True,
+                        ):
+                            st.session_state[f"h_cont_open_{m['id']}"] = True
+
+                    # ICS download
+                    if st.session_state.get(f"h_ics_{m['id']}"):
+                        cnt = st.session_state.get(f"h_ics_count_{m['id']}", 0)
+                        st.download_button(
+                            f"📥 下載 .ics ({cnt} 個事項)",
+                            st.session_state[f"h_ics_{m['id']}"],
+                            file_name=f"{base_name}_calendar.ics",
+                            mime="text/calendar",
+                            key=f"h_dl_ics_{m['id']}",
+                        )
+
+                    # Continue meeting UI
+                    if st.session_state.get(f"h_cont_open_{m['id']}"):
+                        with st.expander("🔗 上傳/錄新會議 → AI 合併", expanded=True):
+                            st.caption("上傳新一段錄音，AI 會將呢個會議同新嘅合併。")
+
+                            cont_uploaded = st.file_uploader(
+                                "新錄音",
+                                type=["mp3", "m4a", "wav", "mp4", "ogg", "flac", "webm"],
+                                key=f"h_cont_upload_{m['id']}",
+                                label_visibility="collapsed",
+                            )
+
+                            if cont_uploaded:
+                                cont_size_mb = cont_uploaded.size / (1024 * 1024)
+                                st.caption(f"📄 `{cont_uploaded.name}` · {cont_size_mb:.1f} MB")
+
+                                if st.button(
+                                    "🚀 處理 + 合併",
+                                    type="primary",
+                                    key=f"h_cont_go_{m['id']}",
+                                    use_container_width=True,
+                                ):
+                                    with st.status("🤖 處理 + 合併中...", expanded=True) as cs:
+                                        try:
+                                            st.write("🎯 AI 處理新錄音...")
+                                            new_result = ai.process_audio(
+                                                audio_bytes=cont_uploaded.read(),
+                                                mime_type=cont_uploaded.type or "audio/mpeg",
+                                                client_name=client,
+                                                project_name=project,
+                                                industry=user_settings.get("industry", "generic"),
+                                                length=user_settings.get("summary_length", "medium"),
+                                                custom_jargon=user_settings.get("jargon", ""),
+                                                company_name=user_settings.get("company_name", ""),
+                                            )
+                                            st.write("✅ 新會議處理完成")
+
+                                            st.write("🔗 AI 合併紀要...")
+                                            merged = ai.merge_summaries(
+                                                old_summary=full["summary"],
+                                                new_summary=new_result["summary"],
+                                            )
+                                            st.write("💾 儲存合併版本...")
+
+                                            db.update_meeting_summary(
+                                                meeting_id=m["id"],
+                                                user_id=user["id"],
+                                                new_summary=merged,
+                                                additional_duration=cont_size_mb * 60,
+                                            )
+                                            st.write("✅ 完成")
+                                            cs.update(label="✅ 已合併", state="complete")
+
+                                            st.session_state.pop(f"h_cont_open_{m['id']}", None)
+                                            st.success("🎉 兩個會議已合併！refresh 睇下。")
+                                            if st.button("🔄 Refresh",
+                                                         key=f"h_cont_refresh_{m['id']}"):
+                                                st.rerun()
+                                        except Exception as e:
+                                            st.error(f"❌ 合併失敗：{e}")
 
 
 # ============ Tab 3: Dashboard ============

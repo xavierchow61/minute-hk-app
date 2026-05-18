@@ -343,3 +343,101 @@ def analyze_sentiment(summary_md: str) -> str:
         ),
     )
     return response.text
+
+
+# ============================================================
+# 🔗 兩會議綜合 / 繼續補充 (#1)
+# ============================================================
+MERGE_PROMPT = """你係資深商務秘書。以下係同一個 client / project 嘅兩段會議紀要。
+請將兩段合併成一份**綜合紀要**，整理時序。
+
+【會議 1（較早）】
+{old_summary}
+
+---
+
+【會議 2（最新）】
+{new_summary}
+
+要求：
+1. 用**書面繁體中文**，保留 Markdown 格式
+2. **保留兩次嘅所有 action items**：
+   - 重複嘅 → 合併 + 標「已重申」
+   - 完成嘅 → 標「✓ 已完成」
+   - 更新嘅 → 標「（之前 X，現改為 Y）」
+3. 如果決議有變 → 最新嗰份優先 + 標明變動
+4. 加一個 **「📅 會議時序」** section 列出兩次會議嘅 chronological
+5. 用之前 same 嘅 Markdown 格式輸出（會議重點、議題、決議、Action Items、風險）
+
+只輸出合併紀要，唔需要其他說明。"""
+
+
+def merge_summaries(old_summary: str, new_summary: str) -> str:
+    """合併兩段會議紀要做綜合版"""
+    client = _client()
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=MERGE_PROMPT.format(
+            old_summary=old_summary,
+            new_summary=new_summary,
+        ),
+        config=types.GenerateContentConfig(
+            temperature=0.3,
+            max_output_tokens=8192,
+        ),
+    )
+    return response.text
+
+
+# ============================================================
+# 📅 Structured Action Items (for Calendar export)
+# ============================================================
+import json
+from datetime import date as _date
+
+ACTION_ITEMS_PROMPT = """從以下會議紀要 extract 所有 action items（待辦事項），轉成 JSON array。
+
+返回格式（嚴格）：
+[
+  {{
+    "task": "具體要做嘅事（簡短）",
+    "assignee": "負責人名（如冇就 '—'）",
+    "deadline": "YYYY-MM-DD（如冇明確日期，用 null）",
+    "priority": "high / medium / low"
+  }}
+]
+
+注意：
+- 今日日期：{today}
+- 如果 deadline 係相對日期（「下星期五」「兩星期內」），請推算成具體日期
+- 如果完全冇 deadline 或者唔肯定，set null
+- 只要 action items（要做嘅事），唔好包括決議事項或風險
+
+紀要：
+{summary}
+
+只輸出 valid JSON array，**唔可以有任何其他文字**（包括 markdown code fence）。"""
+
+
+def extract_action_items(summary_md: str) -> list[dict]:
+    """從 summary 抽出結構化 action items + 日期"""
+    client = _client()
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=ACTION_ITEMS_PROMPT.format(
+            summary=summary_md,
+            today=_date.today().isoformat(),
+        ),
+        config=types.GenerateContentConfig(
+            temperature=0.1,
+            max_output_tokens=2048,
+        ),
+    )
+    raw = response.text.strip()
+    # 清走可能嘅 markdown code fence
+    raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    try:
+        items = json.loads(raw)
+        return items if isinstance(items, list) else []
+    except json.JSONDecodeError:
+        return []

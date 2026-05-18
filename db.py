@@ -103,6 +103,30 @@ def delete_meeting(meeting_id: str, user_id: str):
     sb.table("meetings").delete().eq("id", meeting_id).eq("user_id", user_id).execute()
 
 
+def update_meeting_summary(meeting_id: str, user_id: str,
+                            new_summary: str,
+                            additional_duration: float = 0) -> None:
+    """Update meeting 嘅 summary（用於繼續會議合併）"""
+    sb = get_supabase()
+    # 攞返原本 duration
+    existing = (
+        sb.table("meetings")
+        .select("duration_seconds")
+        .eq("id", meeting_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    if not existing.data:
+        return
+    new_duration = (existing.data[0].get("duration_seconds") or 0) + additional_duration
+
+    sb.table("meetings").update({
+        "summary": new_summary,
+        "duration_seconds": new_duration,
+    }).eq("id", meeting_id).eq("user_id", user_id).execute()
+
+
 # === Usage / Free tier checking ===
 
 def get_user_plan(user_id: str) -> str:
