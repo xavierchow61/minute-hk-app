@@ -26,17 +26,103 @@ def _client():
     return genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
 
-SUMMARY_PROMPT = """你係資深嘅商務會議秘書。
+INDUSTRY_PROMPTS = {
+    "generic": "你係資深嘅商務會議秘書。",
+    "accounting": (
+        "你係香港資深會計師樓嘅高級秘書，熟悉會計、審計、稅務、財務報表術語。"
+        "識別會議中嘅會計議題（IFRS、HKFRS、profit tax、audit、disclosure 等）。"
+    ),
+    "legal": "你係香港律師樓嘅 paralegal，熟悉合約、訴訟、合規術語。",
+    "medical": "你係醫療專業秘書，熟悉診斷、處方、病歷術語。",
+    "sales": "你係銷售團隊嘅 admin，熟悉 pipeline、deal、quota、commission 術語。",
+    "education": "你係教育機構嘅 admin，熟悉課程、學生表現、家校溝通術語。",
+    "real_estate": "你係地產業 admin，熟悉樓盤、租務、按揭、估價術語。",
+    "finance": "你係金融機構秘書，熟悉投資、風險、合規、產品術語。",
+    "consulting": "你係顧問公司 PA，熟悉 strategy、deliverable、stakeholder 術語。",
+    "tech": "你係科技公司 PM 助手，熟悉 product、sprint、roadmap、metrics 術語。",
+}
 
-呢段係一段會議錄音，可能係廣東話、普通話或英文（或夾雜）。
+LENGTH_INSTRUCTIONS = {
+    "short": "用最簡短嘅 1-2 段文字總結（~150 字），重點 + action items，唔需要分 sections。",
+    "medium": "用標準格式：會議重點 + 主要議題 + 決議 + Action Items + 風險。",
+    "full": "用詳細格式：包含晒所有 sections、保留 client 講過嘅重要原話（quotes）、識別暗示嘅 concerns。",
+}
 
-任務：
-1. 聽錄音內容，理解口語講嘅嘢
-2. 用**書面繁體中文**整理成專業會議紀要（保留英文專業術語）
-3. 提取所有 action items + 負責人 + deadline
-4. 標記決議事項
-5. 識別風險點
 
+def build_summary_prompt(duration: str, client_info: str,
+                         industry: str = "generic",
+                         length: str = "medium",
+                         custom_jargon: str = "",
+                         company_name: str = "") -> str:
+    """建立可定制嘅 summary prompt"""
+    system = INDUSTRY_PROMPTS.get(industry, INDUSTRY_PROMPTS["generic"])
+    length_instr = LENGTH_INSTRUCTIONS.get(length, LENGTH_INSTRUCTIONS["medium"])
+
+    custom_context = ""
+    if company_name:
+        custom_context += f"\n你嘅僱主公司：{company_name}。"
+    if custom_jargon:
+        custom_context += f"\n你公司常用嘅特殊術語/人名：{custom_jargon}（識別錄音時請特別留意呢啲詞）。"
+
+    if length == "short":
+        format_block = """
+請用以下 Markdown 格式輸出（簡短版）：
+
+# 📝 會議紀要
+
+**會議時長**：{duration}  **客戶/項目**：{client_info}
+
+## 🎯 重點摘要
+（1-2 段，~150 字）
+
+## ✅ Action Items
+- ...
+
+---
+*由 AI 自動生成*"""
+
+    elif length == "full":
+        format_block = """
+請用以下 Markdown 格式輸出（詳細版）：
+
+# 📝 會議紀要
+
+## 📅 基本資訊
+- **錄音時長**：{duration}
+- **客戶/項目**：{client_info}
+
+## 🎯 會議重點（Executive Summary）
+（3-5 句總結俾趕時間嘅人睇）
+
+## 💡 主要討論議題
+1. **[議題]**
+   - 背景
+   - 關鍵討論
+   - 結論
+
+## 📜 重要原話 (Quotes)
+> 「...」— 講者
+> 「...」— 講者
+
+## ✅ 決議事項
+- ...
+
+## 📋 Action Items
+| # | 待辦事項 | 負責人 | Deadline | 優先級 |
+|---|---------|--------|----------|--------|
+| 1 | ... | ... | ... | 🔴高/🟡中/🟢低 |
+
+## ⚠️ 風險與跟進
+- [明確風險]
+- [隱性 concerns（client 冇明講但暗示嘅嘢）]
+
+## 💡 觀察 / 建議
+- [我建議跟進嘅事項]
+
+---
+*由 AI 自動生成*"""
+    else:  # medium
+        format_block = """
 請用以下 Markdown 格式輸出：
 
 # 📝 會議紀要
@@ -66,6 +152,17 @@ SUMMARY_PROMPT = """你係資深嘅商務會議秘書。
 ---
 *由 AI 自動生成*"""
 
+    return f"""{system}{custom_context}
+
+呢段係一段會議錄音，可能係廣東話、普通話或英文（或夾雜）。
+
+任務：
+1. 聽錄音內容，理解口語講嘅嘢
+2. 用**書面繁體中文**整理（保留英文專業術語）
+3. {length_instr}
+
+{format_block.format(duration=duration, client_info=client_info)}"""
+
 
 def _ext_from_mime(mime_type: str) -> str:
     return {
@@ -83,10 +180,12 @@ def _ext_from_mime(mime_type: str) -> str:
 
 
 def process_audio(audio_bytes: bytes, mime_type: str,
-                  client_name: str = "", project_name: str = "") -> dict:
+                  client_name: str = "", project_name: str = "",
+                  industry: str = "generic", length: str = "medium",
+                  custom_jargon: str = "", company_name: str = "") -> dict:
     """
     一個 Gemini call 完成：transcribe + summarize
-    < 18MB 用 inline，>= 18MB 用 Files API upload
+    支援 industry-specific prompt + 多長度 + custom jargon
     """
     client = _client()
     size_mb = len(audio_bytes) / (1024 * 1024)
@@ -100,9 +199,13 @@ def process_audio(audio_bytes: bytes, mime_type: str,
     if not client_info:
         client_info = "—"
 
-    prompt = SUMMARY_PROMPT.format(
+    prompt = build_summary_prompt(
         duration="（請根據錄音實際長度填寫）",
         client_info=client_info,
+        industry=industry,
+        length=length,
+        custom_jargon=custom_jargon,
+        company_name=company_name,
     )
 
     # === 小檔案：inline data（最快） ===

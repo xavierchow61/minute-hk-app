@@ -6,6 +6,7 @@ import ai
 import auth
 import cloud_exporters
 import cloud_stripe
+import dashboard
 import db
 
 
@@ -437,18 +438,39 @@ with st.sidebar:
         auth.logout()
         st.rerun()
 
+# Load user settings (used by 新會議 + 設定 tab)
+user_settings = db.get_user_settings(user["id"])
+
 # Main content tabs
-tab_new, tab_history = st.tabs(["🎙️ 新會議", "📚 過往會議"])
+tab_new, tab_history, tab_dashboard, tab_settings = st.tabs([
+    "🎙️ 新會議", "📚 過往會議", "📊 Dashboard", "⚙️ 設定"
+])
 
 # ============ Tab 1: New Meeting ============
 with tab_new:
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns([2, 2, 1])
     with col1:
         client_name = st.text_input("客戶", placeholder="ABC Limited",
                                     label_visibility="collapsed")
     with col2:
         project_name = st.text_input("項目", placeholder="2026 audit",
                                      label_visibility="collapsed")
+    with col3:
+        # 紀要長度 selector (default 用 user settings)
+        length_keys = list(db.SUMMARY_LENGTHS.keys())
+        default_length = user_settings.get("summary_length", "medium")
+        try:
+            default_idx = length_keys.index(default_length)
+        except ValueError:
+            default_idx = 1
+        summary_length = st.selectbox(
+            "長度",
+            options=length_keys,
+            format_func=lambda k: db.SUMMARY_LENGTHS[k].split("（")[0],
+            index=default_idx,
+            label_visibility="collapsed",
+            key="meeting_length",
+        )
 
     uploaded = st.file_uploader(
         "上傳會議錄音",
@@ -480,6 +502,10 @@ with tab_new:
                             mime_type=mime_type,
                             client_name=client_name,
                             project_name=project_name,
+                            industry=user_settings.get("industry", "generic"),
+                            length=summary_length,
+                            custom_jargon=user_settings.get("jargon", ""),
+                            company_name=user_settings.get("company_name", ""),
                         )
                         st.write("✅ AI 整理完成")
                         st.write("💾 儲存到資料庫...")
@@ -821,3 +847,149 @@ with tab_history:
                                 mime="text/markdown",
                                 key=f"h_dl_sent_{m['id']}",
                             )
+
+
+# ============ Tab 3: Dashboard ============
+with tab_dashboard:
+    stats = db.get_dashboard_stats(user["id"])
+
+    if stats["total_count"] == 0:
+        st.info("📊 仲未有任何會議。上面 tab 上傳第一個錄音先有 dashboard！")
+    else:
+        # === Top stats cards ===
+        col_a, col_b, col_c, col_d = st.columns(4)
+        col_a.metric("📚 總會議", f"{stats['total_count']}")
+        col_b.metric("⏱️ 總時長", f"{stats['total_hours']:.1f} 小時")
+        avg_min = stats["total_minutes"] / stats["total_count"] if stats["total_count"] else 0
+        col_c.metric("📏 平均長度", f"{avg_min:.1f} 分鐘")
+        col_d.metric("👥 客戶數", f"{len(stats['top_clients'])}")
+
+        st.markdown("---")
+
+        # === Monthly trend ===
+        if stats["monthly_counts"]:
+            st.markdown("##### 📈 每月會議數量")
+            import pandas as pd
+            df_trend = pd.DataFrame(
+                {"月份": list(stats["monthly_counts"].keys()),
+                 "會議數": list(stats["monthly_counts"].values())}
+            )
+            st.bar_chart(df_trend.set_index("月份"))
+
+        # === Top clients + projects ===
+        col_left, col_right = st.columns(2)
+        with col_left:
+            st.markdown("##### 🥇 Top 客戶")
+            if stats["top_clients"]:
+                for i, (client, count) in enumerate(stats["top_clients"][:5], 1):
+                    st.write(f"{i}. **{client}** — {count} 個 meeting")
+            else:
+                st.caption("（暫時冇 client tag）")
+
+        with col_right:
+            st.markdown("##### 📂 Top 項目")
+            if stats["top_projects"]:
+                for i, (proj, count) in enumerate(stats["top_projects"][:5], 1):
+                    st.write(f"{i}. **{proj}** — {count} 個 meeting")
+            else:
+                st.caption("（暫時冇 project tag）")
+
+        # === Word Cloud ===
+        st.markdown("---")
+        st.markdown("##### ☁️ 詞雲 (Top Keywords)")
+        if st.button("🔄 生成詞雲", key="gen_wordcloud"):
+            with st.spinner("分析所有會議文字..."):
+                try:
+                    img_bytes = dashboard.generate_wordcloud_image(
+                        stats["all_summaries_text"], max_words=80
+                    )
+                    if img_bytes:
+                        st.session_state.wordcloud_img = img_bytes
+                    else:
+                        # Fallback: text list
+                        keywords = dashboard.extract_keywords(
+                            stats["all_summaries_text"], top_n=30
+                        )
+                        st.session_state.wordcloud_keywords = keywords
+                except Exception as e:
+                    st.error(f"詞雲生成失敗：{e}")
+
+        if st.session_state.get("wordcloud_img"):
+            st.image(st.session_state.wordcloud_img, use_container_width=True)
+        elif st.session_state.get("wordcloud_keywords"):
+            st.markdown("**Top 30 關鍵字**：")
+            kw_text = "  ·  ".join(
+                f"**{w}** ({c})"
+                for w, c in st.session_state.wordcloud_keywords
+            )
+            st.markdown(kw_text)
+
+
+# ============ Tab 4: Settings ============
+with tab_settings:
+    st.markdown("### ⚙️ 個人化設定")
+    st.caption("呢度設定會應用喺**未來嘅新會議**處理，等 AI 識別你公司專屬嘅 jargon。")
+
+    with st.form("settings_form"):
+        new_company = st.text_input(
+            "🏢 公司名稱（你嘅僱主）",
+            value=user_settings.get("company_name", ""),
+            placeholder="例：陳氏會計師樓",
+            help="AI 會 reference 你嘅公司",
+        )
+
+        industry_keys = list(db.INDUSTRIES.keys())
+        try:
+            ind_idx = industry_keys.index(user_settings.get("industry", "generic"))
+        except ValueError:
+            ind_idx = 0
+        new_industry = st.selectbox(
+            "🎯 行業類型",
+            options=industry_keys,
+            format_func=lambda k: db.INDUSTRIES[k],
+            index=ind_idx,
+            help="影響摘要嘅角度同術語",
+        )
+
+        new_jargon = st.text_area(
+            "📚 自定 jargon / 人名 / 客戶名",
+            value=user_settings.get("jargon", ""),
+            placeholder="例：HKFRS 18、Peter Chan、ABC Holdings、CFR、香港金管局...",
+            height=100,
+            help="用逗號或新行分隔。AI 會特別留意呢啲詞，提升識別準確度。",
+        )
+
+        length_keys = list(db.SUMMARY_LENGTHS.keys())
+        try:
+            len_idx = length_keys.index(user_settings.get("summary_length", "medium"))
+        except ValueError:
+            len_idx = 1
+        new_length = st.selectbox(
+            "📏 預設摘要長度",
+            options=length_keys,
+            format_func=lambda k: db.SUMMARY_LENGTHS[k],
+            index=len_idx,
+            help="新會議嘅 default。每次處理時都可以另揀。",
+        )
+
+        submitted = st.form_submit_button("💾 儲存設定", type="primary", use_container_width=True)
+        if submitted:
+            try:
+                db.update_user_settings(
+                    user["id"],
+                    company_name=new_company.strip(),
+                    industry=new_industry,
+                    jargon=new_jargon.strip(),
+                    summary_length=new_length,
+                )
+                st.success("✅ 設定已儲存！下次處理會議時生效。")
+                st.rerun()
+            except Exception as e:
+                st.error(f"儲存失敗：{e}")
+
+    # 帳號資料
+    st.markdown("---")
+    st.markdown("##### 👤 帳號資料")
+    st.text_input("Email", value=user["email"], disabled=True, key="acc_email")
+    st.text_input("Plan", value=plan.upper(), disabled=True, key="acc_plan")
+    st.caption(f"User ID: `{user['id']}`")
