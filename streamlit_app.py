@@ -759,20 +759,26 @@ with ubar_outer:
                         "貼入 Streamlit secrets。"
                     )
                 else:
-                    # All checks pass — try create checkout URL
-                    try:
-                        pro_url = cloud_stripe.create_checkout_session(
-                            user["id"], user["email"], "pro"
-                        )
+                    # Stripe URL 只 generate 一次，cache 喺 session（避免每次 popover 開都 call API）
+                    cache_key = f"_stripe_url_{user['id']}"
+                    err_key = f"_stripe_err_{user['id']}"
+
+                    if cache_key not in st.session_state and err_key not in st.session_state:
+                        try:
+                            st.session_state[cache_key] = cloud_stripe.create_checkout_session(
+                                user["id"], user["email"], "pro"
+                            )
+                        except Exception as e:
+                            st.session_state[err_key] = str(e)
+
+                    if st.session_state.get(cache_key):
                         st.link_button(
-                            "⭐ 立即升級", pro_url,
+                            "⭐ 立即升級", st.session_state[cache_key],
                             type="primary", use_container_width=True,
                         )
-                        st.caption("撳完跳轉 Stripe Checkout，付完款 admin 會 update 你 plan")
-                    except Exception as e:
-                        st.error(f"⚠️ Stripe API 錯誤：{str(e)[:200]}")
-                        with st.expander("🔍 技術詳情"):
-                            st.exception(e)
+                        st.caption("撳完跳轉 Stripe Checkout · 自動 sync plan (webhook)")
+                    elif st.session_state.get(err_key):
+                        st.error(f"⚠️ Stripe 錯誤：{st.session_state[err_key][:200]}")
         else:
             badge_color = {"pro": "#047857", "team": "#92400e"}.get(plan, "#1e66f5")
             badge_bg = {"pro": "#ecfdf5", "team": "#fef3c7"}.get(plan, "#eff6ff")
@@ -1007,29 +1013,32 @@ with tab_new:
                 st.button("📕 PDF (錯)", disabled=True, use_container_width=True, help=str(e))
 
         with col_ppt:
-            # 撳完 PPT button → set flag，spinner + 處理放去 columns 之後
             if st.button("📊 PPT", use_container_width=True, key="ppt_main"):
                 st.session_state._gen_pptx_main = True
+                st.toast("📊 AI 生成 PPT 中... (約 10-20 秒)", icon="🤖")
 
         with col_ics:
             if st.button("📅 加 Calendar", use_container_width=True, key="ics_main"):
                 st.session_state._gen_ics_main = True
+                st.toast("📅 AI 抽取 action items 中... (約 5-10 秒)", icon="🤖")
 
-        # ============ Conditional content (columns 之後)============
+        # ============ Process AFTER columns（避免 duplicate row）============
         # PPT 生成
         if st.session_state.pop("_gen_pptx_main", False):
-            with st.spinner("AI 結構化 + 生成 PPT..."):
+            with st.status("📊 AI 結構化 + 生成 PPT...", expanded=True) as s:
                 try:
-                    import cloud_pptx  # lazy load
+                    st.write("🧠 Gemini 結構化 (5-10s)...")
+                    import cloud_pptx
                     pptx_bytes = cloud_pptx.summary_to_pptx_bytes(st.session_state.last_summary)
                     st.session_state.pptx_main = pptx_bytes
+                    st.write("✅ PPT 生成完成")
+                    s.update(label="✅ PPT 已生成 - 撳下面 download", state="complete")
                 except ImportError:
-                    st.error(
-                        "⚠️ PPT module 仲未 ready\n\n"
-                        "Streamlit Cloud 仲喺度裝 python-pptx (5-10 分鐘)。"
-                    )
+                    s.update(label="⚠️ PPT module 仲未 ready", state="error")
+                    st.error("Streamlit Cloud 仲喺度裝 python-pptx (5-10 分鐘)。")
                 except Exception as e:
-                    st.error(f"❌ PPT 生成失敗：{e}")
+                    s.update(label=f"❌ PPT 失敗", state="error")
+                    st.error(f"{e}")
                     with st.expander("🔍 技術詳情"):
                         st.exception(e)
 
@@ -1040,15 +1049,18 @@ with tab_new:
                 file_name=f"{base_name}_簡報.pptx",
                 mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
                 key="dl_pptx_main",
+                use_container_width=True,
             )
 
         # Calendar 抽 action items
         if st.session_state.pop("_gen_ics_main", False):
-            with st.spinner("AI 抽取 action items..."):
+            with st.status("📅 AI 抽取 action items...", expanded=True) as s:
                 try:
+                    st.write("🧠 Gemini 分析中 (5-10s)...")
                     items = ai.extract_action_items(st.session_state.last_summary)
                     if not items:
-                        st.warning("冇 action items")
+                        s.update(label="⚠️ 冇 action items", state="error")
+                        st.warning("呢個 meeting 冇可以加入 calendar 嘅事項")
                     else:
                         st.session_state.cal_items_main = items
                         st.session_state.ics_main = cloud_calendar.action_items_to_ics(
@@ -1056,7 +1068,10 @@ with tab_new:
                             meeting_title=base_name,
                             client=st.session_state.get("last_meeting_name", ""),
                         )
+                        st.write(f"✅ 揾到 {len(items)} 個事項")
+                        s.update(label=f"✅ {len(items)} 個 action items", state="complete")
                 except Exception as e:
+                    s.update(label="❌ 抽取失敗", state="error")
                     show_friendly_error(e, "Action items 抽取")
 
         # 顯示 calendar 選項（per action item）
@@ -1282,25 +1297,31 @@ with tab_history:
                         except Exception:
                             pass
                     with col_ppt:
-                        # PPT generation (lazy import)
+                        # 只 set flag，processing 喺 columns 之後
                         if st.button("📊 PPT", key=f"ppt_btn_{m['id']}", use_container_width=True):
-                            with st.spinner("AI 生成 PPT..."):
-                                try:
-                                    import cloud_pptx
-                                    pptx_bytes = cloud_pptx.summary_to_pptx_bytes(full["summary"])
-                                    st.session_state[f"h_pptx_{m['id']}"] = pptx_bytes
-                                except ImportError:
-                                    st.error("⚠️ PPT module 仲未 ready，請等 5 分鐘再試")
-                                except Exception as e:
-                                    st.error(f"❌ PPT 失敗：{e}")
-                                    with st.expander("🔍 詳情"):
-                                        st.exception(e)
+                            st.session_state[f"_h_gen_pptx_{m['id']}"] = True
+                            st.toast("📊 PPT 生成中... (10-20s)", icon="🤖")
                     with col_del:
                         if st.button("🗑️ 刪除", key=f"del_{m['id']}", use_container_width=True):
                             db.delete_meeting(m["id"], user["id"])
                             st.rerun()
 
-                    # PPT download button（生成完先出）
+                    # PPT generation (after all columns - avoid duplicate row)
+                    if st.session_state.pop(f"_h_gen_pptx_{m['id']}", False):
+                        with st.status("📊 AI 生成 PPT...", expanded=True) as s:
+                            try:
+                                import cloud_pptx
+                                pptx_bytes = cloud_pptx.summary_to_pptx_bytes(full["summary"])
+                                st.session_state[f"h_pptx_{m['id']}"] = pptx_bytes
+                                s.update(label="✅ PPT 已生成", state="complete")
+                            except ImportError:
+                                s.update(label="⚠️ Module 未 ready", state="error")
+                                st.error("python-pptx 仲安裝中，請等 5 分鐘")
+                            except Exception as e:
+                                s.update(label="❌ 失敗", state="error")
+                                st.error(f"{e}")
+
+                    # PPT download button
                     if st.session_state.get(f"h_pptx_{m['id']}"):
                         st.download_button(
                             "📥 下載 PPT (.pptx)",
