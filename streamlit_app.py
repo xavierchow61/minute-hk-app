@@ -1027,14 +1027,24 @@ with tab_dashboard:
         st.markdown("---")
 
         # === Monthly trend ===
-        if stats["monthly_counts"]:
-            st.markdown("##### 📈 每月會議數量")
+        st.markdown("##### 📈 每月會議數量")
+        if stats["monthly_counts"] and len(stats["monthly_counts"]) > 1:
             import pandas as pd
-            df_trend = pd.DataFrame(
-                {"月份": list(stats["monthly_counts"].keys()),
-                 "會議數": list(stats["monthly_counts"].values())}
+            df_trend = pd.DataFrame({
+                "月份": list(stats["monthly_counts"].keys()),
+                "會議數": list(stats["monthly_counts"].values()),
+            })
+            st.bar_chart(
+                df_trend.set_index("月份"),
+                height=240,
+                color="#1e66f5",
             )
-            st.bar_chart(df_trend.set_index("月份"))
+        elif stats["monthly_counts"]:
+            # 只得 1 個月嘅數據 → 顯示 inline metric (chart 太醜)
+            month, count = next(iter(stats["monthly_counts"].items()))
+            st.info(f"📅 **{month}**：{count} 個 meeting（要至少 2 個月先有 trend chart）")
+        else:
+            st.caption("（暫時冇數據）")
 
         # === Top clients + projects ===
         col_left, col_right = st.columns(2)
