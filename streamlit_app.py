@@ -12,6 +12,17 @@ import dashboard
 import db
 
 
+@st.cache_data(ttl=1800, show_spinner=False)  # 30 分鐘 cache
+def get_cached_upgrade_url(user_id: str, email: str, plan: str = "pro") -> str | None:
+    """生成 Stripe Checkout URL（cached）"""
+    if not cloud_stripe.is_configured():
+        return None
+    try:
+        return cloud_stripe.create_checkout_session(user_id, email, plan)
+    except Exception:
+        return None
+
+
 def show_friendly_error(e: Exception, context: str = "處理"):
     """Display user-friendly error for common Gemini issues"""
     err_msg = str(e)
@@ -487,6 +498,24 @@ st.markdown("""
         gap: 1rem;
         flex-wrap: wrap;
     }
+
+    /* Upgrade button in user bar */
+    .upgrade-btn {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #06b6d4 0%, #a855f7 100%);
+        color: white !important;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-decoration: none !important;
+        box-shadow: 0 2px 8px rgba(6, 182, 212, 0.3);
+        transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .upgrade-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(6, 182, 212, 0.45);
+    }
     .user-bar-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     .user-bar-logo {
         font-size: 1rem;
@@ -642,6 +671,16 @@ else:
     daily_limit_str = f"{db.PRO_DAILY_SECONDS / 60:.0f}"
 
 # === Top User Bar (主畫面上方) ===
+upgrade_btn_html = ""
+if plan == "free":
+    upgrade_url = get_cached_upgrade_url(user["id"], user["email"], "pro")
+    if upgrade_url:
+        upgrade_btn_html = (
+            f'<a href="{upgrade_url}" target="_blank" class="upgrade-btn">'
+            f'⭐ 升級 Pro'
+            f'</a>'
+        )
+
 st.markdown(f"""
 <div class="user-bar">
     <div class="user-bar-left">
@@ -655,6 +694,7 @@ st.markdown(f"""
         </div>
     </div>
     <div class="user-bar-right">
+        {upgrade_btn_html}
         <div class="user-bar-email">👋 {user["email"]}</div>
         <span class="user-bar-badge {plan_badge_class}">{plan_emoji} {plan.upper()}</span>
     </div>
@@ -1508,6 +1548,71 @@ with tab_settings:
                 st.rerun()
             except Exception as e:
                 st.error(f"儲存失敗：{e}")
+
+    # ============ 💳 Billing section ============
+    st.markdown(
+        '<div style="margin: 1.5rem 0 0.8rem 0;">'
+        '<div class="settings-card-title">💳 訂閱計劃</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    if plan == "free":
+        # FREE → 顯示升級選項
+        b_col1, b_col2 = st.columns(2)
+        with b_col1:
+            st.markdown("""
+            <div style="padding:0.9rem 1rem;border:2px solid #06b6d4;border-radius:12px;
+                        background:linear-gradient(135deg, rgba(6,182,212,0.05), rgba(168,85,247,0.05));">
+                <div style="font-size:0.7rem;color:#06b6d4;font-weight:700;letter-spacing:0.5px;">
+                    ⭐ 個人 PRO
+                </div>
+                <div style="font-size:1.6rem;font-weight:800;margin:0.2rem 0;">
+                    HKD 99 <span style="font-size:0.85rem;font-weight:500;color:#71717a;">/月</span>
+                </div>
+                <div style="font-size:0.78rem;color:#52525b;">
+                    ✓ 無限錄音 · ✓ 全部 AI 功能 · ✓ 優先處理
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            pro_url = get_cached_upgrade_url(user["id"], user["email"], "pro")
+            if pro_url:
+                st.link_button("⭐ 升級 Pro", pro_url, type="primary", use_container_width=True)
+            else:
+                st.button("⭐ 升級 Pro（Stripe 未設定）", disabled=True, use_container_width=True)
+
+        with b_col2:
+            st.markdown("""
+            <div style="padding:0.9rem 1rem;border:1px solid #e4e4e7;border-radius:12px;background:white;">
+                <div style="font-size:0.7rem;color:#71717a;font-weight:700;letter-spacing:0.5px;">
+                    👥 團隊
+                </div>
+                <div style="font-size:1.6rem;font-weight:800;margin:0.2rem 0;">
+                    HKD 599 <span style="font-size:0.85rem;font-weight:500;color:#71717a;">/月</span>
+                </div>
+                <div style="font-size:0.78rem;color:#52525b;">
+                    ✓ 5 用戶 · ✓ 共享資料庫 · ✓ Admin dashboard
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            team_url = get_cached_upgrade_url(user["id"], user["email"], "team")
+            if team_url:
+                st.link_button("👥 升級團隊", team_url, use_container_width=True)
+            else:
+                st.button("👥 升級團隊（Stripe 未設定）", disabled=True, use_container_width=True)
+
+        st.caption(
+            "💡 付完款之後，admin 會手動 update 你 plan（webhook 仲整緊）。"
+            "如果有任何問題請 email xavierchow61@gmail.com"
+        )
+    else:
+        # PRO/TEAM → 顯示現有 plan + 管理 button
+        plan_emoji_disp = {"pro": "⭐", "team": "👥"}.get(plan, "")
+        plan_name = {"pro": "個人 Pro", "team": "團隊"}.get(plan, plan)
+        st.success(
+            f"{plan_emoji_disp} 你而家係 **{plan_name}** 用戶 — 無限錄音、全部功能解鎖 🎉"
+        )
+        st.caption("要管理訂閱、改 payment method 或取消？請 email xavierchow61@gmail.com")
 
     # ============ 帳號資料 (separate card) ============
     st.markdown(
