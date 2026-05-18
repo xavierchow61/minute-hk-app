@@ -59,12 +59,33 @@ def _check_captcha(answer: str) -> bool:
     expected = a + b if op == "+" else a - b
     return ans_int == expected
 
+# ============ Brand Logo (inline SVG, no external file needed) ============
+LOGO_SVG = """<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="100" height="100" rx="22" fill="url(#bgGrad)"/>
+  <rect x="38" y="20" width="24" height="40" rx="12" fill="white"/>
+  <circle cx="50" cy="32" r="2" fill="#06b6d4" opacity="0.5"/>
+  <circle cx="50" cy="40" r="2" fill="#06b6d4" opacity="0.5"/>
+  <circle cx="50" cy="48" r="2" fill="#06b6d4" opacity="0.5"/>
+  <path d="M 24 50 Q 24 72 50 72 Q 76 72 76 50" stroke="white" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <line x1="50" y1="72" x2="50" y2="84" stroke="white" stroke-width="5" stroke-linecap="round"/>
+</svg>"""
+
+import base64
+LOGO_B64 = base64.b64encode(LOGO_SVG.encode("utf-8")).decode("ascii")
+LOGO_DATA_URI = f"data:image/svg+xml;base64,{LOGO_B64}"
+
 # ============ Page Config ============
 st.set_page_config(
     page_title="Minute.hk - 廣東話會議 AI",
-    page_icon="🎙️",
-    layout="wide",                     # 等 sidebar + main content 並排展示
-    initial_sidebar_state="expanded",  # 登入後默認展開
+    page_icon=LOGO_DATA_URI,
+    layout="wide",
+    initial_sidebar_state="expanded",
     menu_items={
         "About": "Minute.hk - 香港人專用 AI 會議摘要工具",
     },
@@ -512,9 +533,17 @@ elif qp.get("upgrade") == "cancel":
 # ============ Auth UI (if not logged in) ============
 if not auth.is_logged_in():
     st.markdown(
-        "<h2 style='text-align:center;margin:1rem 0 0 0;'>🎙️ Minute.hk</h2>"
-        "<p style='text-align:center;color:#64748b;margin:0.2rem 0 0.8rem 0;font-size:0.85rem;'>"
-        "廣東話會議 AI 摘要 · 香港人專用</p>",
+        f"""
+        <div style='text-align:center;margin:0.5rem 0 0.8rem 0;'>
+            <img src='{LOGO_DATA_URI}' alt='Minute.hk' style='width:48px;height:48px;'/>
+            <h2 style='margin:0.4rem 0 0 0;font-size:1.4rem;'>
+                Minute<span style='color:#06b6d4;'>.hk</span>
+            </h2>
+            <p style='color:#64748b;margin:0.2rem 0 0 0;font-size:0.82rem;'>
+                廣東話會議 AI 摘要 · 香港人專用
+            </p>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
@@ -616,10 +645,13 @@ else:
 st.markdown(f"""
 <div class="user-bar">
     <div class="user-bar-left">
-        <div class="user-bar-logo">🎙️ Minute<span>.hk</span></div>
-        <div class="user-bar-usage">
-            📊 今日 <strong>{daily_used:.1f}/{daily_limit_str}</strong> 分鐘
-            · 本月 <strong>{monthly_used:.1f}/{monthly_limit_str}</strong> 分鐘
+        <img src="{LOGO_DATA_URI}" alt="Minute.hk" style="width:32px;height:32px;flex-shrink:0;"/>
+        <div style="display:flex;flex-direction:column;gap:1px;">
+            <div class="user-bar-logo">Minute<span>.hk</span></div>
+            <div class="user-bar-usage">
+                📊 今日 <strong>{daily_used:.1f}/{daily_limit_str}</strong> 分
+                · 本月 <strong>{monthly_used:.1f}/{monthly_limit_str}</strong> 分
+            </div>
         </div>
     </div>
     <div class="user-bar-right">
@@ -632,8 +664,14 @@ st.markdown(f"""
 # === Sidebar (簡化版：只係快速連結 + 登出) ===
 with st.sidebar:
     st.markdown(
-        "<div style='font-size:1.05rem;font-weight:700;color:#1e293b;padding:0.3rem 0 1rem 0;'>"
-        "🎙️ Minute<span style='color:#1e66f5;'>.hk</span></div>",
+        f"""
+        <div style='display:flex;align-items:center;gap:8px;padding:0.3rem 0 1rem 0;'>
+            <img src='{LOGO_DATA_URI}' alt='Logo' style='width:28px;height:28px;'/>
+            <span style='font-size:1.05rem;font-weight:700;color:#18181b;'>
+                Minute<span style='color:#06b6d4;'>.hk</span>
+            </span>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
@@ -1045,7 +1083,7 @@ with tab_history:
                 full = db.get_meeting(m["id"], user["id"])
                 if full:
                     st.markdown(full["summary"])
-                    col_md, col_word, col_pdf, col_del = st.columns([1, 1, 1, 1])
+                    col_md, col_word, col_pdf, col_ppt, col_del = st.columns([1, 1, 1, 1, 1])
                     base_name = (client or "meeting").replace(" ", "_")
 
                     with col_md:
@@ -1083,10 +1121,30 @@ with tab_history:
                             )
                         except Exception:
                             pass
+                    with col_ppt:
+                        # PPT generation (async — 撳 button 先生成)
+                        if st.button("📊 PPT", key=f"ppt_btn_{m['id']}", use_container_width=True):
+                            with st.spinner("AI 生成 PPT..."):
+                                try:
+                                    pptx_bytes = cloud_pptx.summary_to_pptx_bytes(full["summary"])
+                                    st.session_state[f"h_pptx_{m['id']}"] = pptx_bytes
+                                except Exception as e:
+                                    show_friendly_error(e, "PPT 生成")
                     with col_del:
                         if st.button("🗑️ 刪除", key=f"del_{m['id']}", use_container_width=True):
                             db.delete_meeting(m["id"], user["id"])
                             st.rerun()
+
+                    # PPT download button（生成完先出）
+                    if st.session_state.get(f"h_pptx_{m['id']}"):
+                        st.download_button(
+                            "📥 下載 PPT (.pptx)",
+                            st.session_state[f"h_pptx_{m['id']}"],
+                            file_name=f"{base_name}_簡報.pptx",
+                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                            key=f"h_dl_pptx_{m['id']}",
+                            use_container_width=True,
+                        )
 
                     # === 🤖 AI 進階分析（每個 meeting）===
                     st.markdown("**🤖 AI 進階分析**")
