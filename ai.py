@@ -9,7 +9,65 @@ from google import genai
 from google.genai import types
 
 GEMINI_MODEL = "gemini-2.5-flash"
+FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"]
 INLINE_MAX_BYTES = 18 * 1024 * 1024   # < 20MB Gemini inline limit, leave headroom
+
+
+# ============================================================
+# 🔁 Retry helper for transient 503 / overload errors
+# ============================================================
+def _is_retryable(e: Exception) -> bool:
+    """Check if exception is transient (503 / overload / rate limit)"""
+    msg = str(e).lower()
+    return any(s in msg for s in [
+        "503", "unavailable", "overload", "high demand",
+        "deadline exceeded", "504", "internal error", "500",
+    ])
+
+
+def call_with_retry(fn, *args, max_attempts: int = 3,
+                    base_delay: float = 2.0, fallback_models: list = None,
+                    **kwargs):
+    """
+    Call Gemini API with retry on transient errors + fallback to alt models.
+
+    Args:
+        fn: function to call (takes 'model' kwarg)
+        max_attempts: total tries with primary model
+        base_delay: starting delay seconds (doubles each retry)
+        fallback_models: list of models to try after primary fails
+    """
+    fallback_models = fallback_models or FALLBACK_MODELS
+    primary = kwargs.get("model", GEMINI_MODEL)
+
+    last_error = None
+
+    # Try primary model with retries
+    for attempt in range(max_attempts):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            last_error = e
+            if not _is_retryable(e):
+                raise
+            if attempt < max_attempts - 1:
+                delay = base_delay * (2 ** attempt)
+                time.sleep(delay)
+
+    # Try fallback models (1 try each)
+    for fb_model in fallback_models:
+        if fb_model == primary:
+            continue
+        try:
+            kwargs["model"] = fb_model
+            return fn(*args, **kwargs)
+        except Exception as e:
+            last_error = e
+            if not _is_retryable(e):
+                raise
+
+    # All exhausted
+    raise last_error
 
 # 翻譯支援嘅語言
 TRANSLATE_TARGETS = {
@@ -210,17 +268,19 @@ def process_audio(audio_bytes: bytes, mime_type: str,
 
     # === 小檔案：inline data（最快） ===
     if len(audio_bytes) <= INLINE_MAX_BYTES:
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=[
-                prompt,
-                types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
-            ],
-            config=types.GenerateContentConfig(
-                temperature=0.3,
-                max_output_tokens=8192,
-            ),
-        )
+        def _gen_inline(model=GEMINI_MODEL):
+            return client.models.generate_content(
+                model=model,
+                contents=[
+                    prompt,
+                    types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+                ],
+                config=types.GenerateContentConfig(
+                    temperature=0.3,
+                    max_output_tokens=8192,
+                ),
+            )
+        response = call_with_retry(_gen_inline, model=GEMINI_MODEL)
         return {"summary": response.text, "model": GEMINI_MODEL, "method": "inline"}
 
     # === 大檔案：Files API upload ===
@@ -239,14 +299,16 @@ def process_audio(audio_bytes: bytes, mime_type: str,
             time.sleep(1)
             audio_file = client.files.get(name=audio_file.name)
 
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=[prompt, audio_file],
-            config=types.GenerateContentConfig(
-                temperature=0.3,
-                max_output_tokens=8192,
-            ),
-        )
+        def _gen_files(model=GEMINI_MODEL):
+            return client.models.generate_content(
+                model=model,
+                contents=[prompt, audio_file],
+                config=types.GenerateContentConfig(
+                    temperature=0.3,
+                    max_output_tokens=8192,
+                ),
+            )
+        response = call_with_retry(_gen_files, model=GEMINI_MODEL)
 
         # 清理 cloud file
         try:
@@ -282,17 +344,20 @@ def translate(summary_md: str, target_code: str) -> str:
     """翻譯會議紀要"""
     target_name = TRANSLATE_TARGETS.get(target_code, target_code)
     client = _client()
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=TRANSLATE_PROMPT.format(
-            target_name=target_name,
-            summary=summary_md,
-        ),
-        config=types.GenerateContentConfig(
-            temperature=0.3,
-            max_output_tokens=8192,
-        ),
-    )
+
+    def _gen(model=GEMINI_MODEL):
+        return client.models.generate_content(
+            model=model,
+            contents=TRANSLATE_PROMPT.format(
+                target_name=target_name,
+                summary=summary_md,
+            ),
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=8192,
+            ),
+        )
+    response = call_with_retry(_gen, model=GEMINI_MODEL)
     return response.text
 
 
@@ -334,14 +399,17 @@ SENTIMENT_PROMPT = """你係資深商業心理顧問。請根據以下會議紀�
 def analyze_sentiment(summary_md: str) -> str:
     """分析會議語氣 / 氣氛"""
     client = _client()
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=SENTIMENT_PROMPT.format(summary=summary_md),
-        config=types.GenerateContentConfig(
-            temperature=0.4,
-            max_output_tokens=4096,
-        ),
-    )
+
+    def _gen(model=GEMINI_MODEL):
+        return client.models.generate_content(
+            model=model,
+            contents=SENTIMENT_PROMPT.format(summary=summary_md),
+            config=types.GenerateContentConfig(
+                temperature=0.4,
+                max_output_tokens=4096,
+            ),
+        )
+    response = call_with_retry(_gen, model=GEMINI_MODEL)
     return response.text
 
 
@@ -375,17 +443,20 @@ MERGE_PROMPT = """你係資深商務秘書。以下係同一個 client / project
 def merge_summaries(old_summary: str, new_summary: str) -> str:
     """合併兩段會議紀要做綜合版"""
     client = _client()
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=MERGE_PROMPT.format(
-            old_summary=old_summary,
-            new_summary=new_summary,
-        ),
-        config=types.GenerateContentConfig(
-            temperature=0.3,
-            max_output_tokens=8192,
-        ),
-    )
+
+    def _gen(model=GEMINI_MODEL):
+        return client.models.generate_content(
+            model=model,
+            contents=MERGE_PROMPT.format(
+                old_summary=old_summary,
+                new_summary=new_summary,
+            ),
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=8192,
+            ),
+        )
+    response = call_with_retry(_gen, model=GEMINI_MODEL)
     return response.text
 
 
@@ -422,17 +493,20 @@ ACTION_ITEMS_PROMPT = """從以下會議紀要 extract 所有 action items（待
 def extract_action_items(summary_md: str) -> list[dict]:
     """從 summary 抽出結構化 action items + 日期"""
     client = _client()
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=ACTION_ITEMS_PROMPT.format(
-            summary=summary_md,
-            today=_date.today().isoformat(),
-        ),
-        config=types.GenerateContentConfig(
-            temperature=0.1,
-            max_output_tokens=2048,
-        ),
-    )
+
+    def _gen(model=GEMINI_MODEL):
+        return client.models.generate_content(
+            model=model,
+            contents=ACTION_ITEMS_PROMPT.format(
+                summary=summary_md,
+                today=_date.today().isoformat(),
+            ),
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=2048,
+            ),
+        )
+    response = call_with_retry(_gen, model=GEMINI_MODEL)
     raw = response.text.strip()
     # 清走可能嘅 markdown code fence
     raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()

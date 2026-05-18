@@ -11,6 +11,34 @@ import dashboard
 import db
 
 
+def show_friendly_error(e: Exception, context: str = "處理"):
+    """Display user-friendly error for common Gemini issues"""
+    err_msg = str(e)
+    err_lower = err_msg.lower()
+
+    if "503" in err_msg or "unavailable" in err_lower or "overload" in err_lower or "high demand" in err_lower:
+        st.error(
+            "⚠️ **Gemini AI 暫時擠塞**\n\n"
+            "Google server 而家好多人用緊。我哋已經自動重試 3 次 + 試 fallback model。\n\n"
+            "👉 **建議**：等 1-2 分鐘再試。"
+        )
+    elif "quota" in err_lower or "rate" in err_lower and "limit" in err_lower:
+        st.error(
+            "⚠️ **API quota 用完**\n\n"
+            "免費 quota 每分鐘有上限。請等 30 秒再試。"
+        )
+    elif "429" in err_msg or "exceeded" in err_lower:
+        st.error("⚠️ **太多 request**，請等 30 秒再試。")
+    elif "401" in err_msg or "403" in err_msg or "authentication" in err_lower:
+        st.error("⚠️ **API key 問題**，請聯絡 admin。")
+    elif "\\x" in err_msg or err_msg.startswith("b'"):
+        st.error("❌ 錄音處理失敗，請試吓另一個檔案。")
+    else:
+        if len(err_msg) > 300:
+            err_msg = err_msg[:300] + "..."
+        st.error(f"❌ {context}失敗：{err_msg}")
+
+
 def _new_captcha():
     """Generate new math captcha question"""
     st.session_state.captcha_a = random.randint(1, 9)
@@ -728,12 +756,7 @@ with tab_new:
                         st.session_state.pop("last_sentiment", None)
 
                     except Exception as e:
-                        err_msg = str(e)
-                        if "\\x" in err_msg or err_msg.startswith("b'"):
-                            err_msg = "錄音處理失敗，請試吓另一個檔案。"
-                        elif len(err_msg) > 300:
-                            err_msg = err_msg[:300] + "..."
-                        st.error(f"❌ {err_msg}")
+                        show_friendly_error(e, "AI 處理")
                         with st.expander("🔍 技術詳情"):
                             st.exception(e)
 
