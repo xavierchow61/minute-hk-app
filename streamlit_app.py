@@ -1007,22 +1007,31 @@ with tab_new:
                 st.button("📕 PDF (錯)", disabled=True, use_container_width=True, help=str(e))
 
         with col_ppt:
+            # 撳完 PPT button → set flag，spinner + 處理放去 columns 之後
             if st.button("📊 PPT", use_container_width=True, key="ppt_main"):
-                with st.spinner("AI 結構化 + 生成 PPT..."):
-                    try:
-                        import cloud_pptx  # lazy load
-                        pptx_bytes = cloud_pptx.summary_to_pptx_bytes(st.session_state.last_summary)
-                        st.session_state.pptx_main = pptx_bytes
-                    except ImportError as e:
-                        st.error(
-                            "⚠️ PPT module 仲未 ready\n\n"
-                            "Streamlit Cloud 仲喺度裝 python-pptx (5-10 分鐘)。\n"
-                            "請稍後再試。"
-                        )
-                    except Exception as e:
-                        st.error(f"❌ PPT 生成失敗：{e}")
-                        with st.expander("🔍 技術詳情"):
-                            st.exception(e)
+                st.session_state._gen_pptx_main = True
+
+        with col_ics:
+            if st.button("📅 加 Calendar", use_container_width=True, key="ics_main"):
+                st.session_state._gen_ics_main = True
+
+        # ============ Conditional content (columns 之後)============
+        # PPT 生成
+        if st.session_state.pop("_gen_pptx_main", False):
+            with st.spinner("AI 結構化 + 生成 PPT..."):
+                try:
+                    import cloud_pptx  # lazy load
+                    pptx_bytes = cloud_pptx.summary_to_pptx_bytes(st.session_state.last_summary)
+                    st.session_state.pptx_main = pptx_bytes
+                except ImportError:
+                    st.error(
+                        "⚠️ PPT module 仲未 ready\n\n"
+                        "Streamlit Cloud 仲喺度裝 python-pptx (5-10 分鐘)。"
+                    )
+                except Exception as e:
+                    st.error(f"❌ PPT 生成失敗：{e}")
+                    with st.expander("🔍 技術詳情"):
+                        st.exception(e)
 
         if st.session_state.get("pptx_main"):
             st.download_button(
@@ -1033,24 +1042,22 @@ with tab_new:
                 key="dl_pptx_main",
             )
 
-        with col_ics:
-            # 📅 Calendar (extract action items)
-            if st.button("📅 加 Calendar", use_container_width=True, key="ics_main"):
-                with st.spinner("AI 抽取 action items..."):
-                    try:
-                        items = ai.extract_action_items(st.session_state.last_summary)
-                        if not items:
-                            st.warning("冇 action items")
-                        else:
-                            st.session_state.cal_items_main = items
-                            # 順便整 ICS 備用
-                            st.session_state.ics_main = cloud_calendar.action_items_to_ics(
-                                items,
-                                meeting_title=base_name,
-                                client=st.session_state.get("last_meeting_name", ""),
-                            )
-                    except Exception as e:
-                        show_friendly_error(e, "Action items 抽取")
+        # Calendar 抽 action items
+        if st.session_state.pop("_gen_ics_main", False):
+            with st.spinner("AI 抽取 action items..."):
+                try:
+                    items = ai.extract_action_items(st.session_state.last_summary)
+                    if not items:
+                        st.warning("冇 action items")
+                    else:
+                        st.session_state.cal_items_main = items
+                        st.session_state.ics_main = cloud_calendar.action_items_to_ics(
+                            items,
+                            meeting_title=base_name,
+                            client=st.session_state.get("last_meeting_name", ""),
+                        )
+                except Exception as e:
+                    show_friendly_error(e, "Action items 抽取")
 
         # 顯示 calendar 選項（per action item）
         if st.session_state.get("cal_items_main"):
@@ -1653,23 +1660,4 @@ with tab_settings:
             except Exception as e:
                 st.error(f"儲存失敗：{e}")
 
-    # ============ 帳號資料 (separate card) ============
-    st.markdown(
-        '<div style="margin: 1.5rem 0 0.8rem 0;">'
-        '<div class="settings-card-title">👤 帳號資料</div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-    info_col1, info_col2 = st.columns(2)
-    with info_col1:
-        st.text_input("Email", value=user["email"], disabled=True, key="acc_email")
-    with info_col2:
-        plan_display = {"free": "🆓 FREE", "pro": "⭐ PRO", "team": "👥 TEAM"}.get(plan, plan.upper())
-        st.text_input("Plan", value=plan_display, disabled=True, key="acc_plan")
-
-    st.markdown(
-        f'<div style="margin-top:0.3rem;font-size:0.72rem;color:#a1a1aa;">'
-        f'User ID: <code style="font-size:0.7rem;">{user["id"]}</code></div>',
-        unsafe_allow_html=True,
-    )
+    # 帳號資料 section 隱藏 — Email + Plan 已喺 top user bar 顯示
