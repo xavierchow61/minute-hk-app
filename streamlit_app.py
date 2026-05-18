@@ -6,7 +6,7 @@ import ai
 import auth
 import cloud_calendar
 import cloud_exporters
-import cloud_pptx
+# cloud_pptx imported lazily on button click (python-pptx may still be installing)
 import cloud_stripe
 import dashboard
 import db
@@ -866,10 +866,19 @@ with tab_new:
             if st.button("📊 PPT", use_container_width=True, key="ppt_main"):
                 with st.spinner("AI 結構化 + 生成 PPT..."):
                     try:
+                        import cloud_pptx  # lazy load
                         pptx_bytes = cloud_pptx.summary_to_pptx_bytes(st.session_state.last_summary)
                         st.session_state.pptx_main = pptx_bytes
+                    except ImportError as e:
+                        st.error(
+                            "⚠️ PPT module 仲未 ready\n\n"
+                            "Streamlit Cloud 仲喺度裝 python-pptx (5-10 分鐘)。\n"
+                            "請稍後再試。"
+                        )
                     except Exception as e:
-                        show_friendly_error(e, "PPT 生成")
+                        st.error(f"❌ PPT 生成失敗：{e}")
+                        with st.expander("🔍 技術詳情"):
+                            st.exception(e)
 
         if st.session_state.get("pptx_main"):
             st.download_button(
@@ -1122,14 +1131,19 @@ with tab_history:
                         except Exception:
                             pass
                     with col_ppt:
-                        # PPT generation (async — 撳 button 先生成)
+                        # PPT generation (lazy import)
                         if st.button("📊 PPT", key=f"ppt_btn_{m['id']}", use_container_width=True):
                             with st.spinner("AI 生成 PPT..."):
                                 try:
+                                    import cloud_pptx
                                     pptx_bytes = cloud_pptx.summary_to_pptx_bytes(full["summary"])
                                     st.session_state[f"h_pptx_{m['id']}"] = pptx_bytes
+                                except ImportError:
+                                    st.error("⚠️ PPT module 仲未 ready，請等 5 分鐘再試")
                                 except Exception as e:
-                                    show_friendly_error(e, "PPT 生成")
+                                    st.error(f"❌ PPT 失敗：{e}")
+                                    with st.expander("🔍 詳情"):
+                                        st.exception(e)
                     with col_del:
                         if st.button("🗑️ 刪除", key=f"del_{m['id']}", use_container_width=True):
                             db.delete_meeting(m["id"], user["id"])
