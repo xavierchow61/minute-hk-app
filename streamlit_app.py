@@ -735,19 +735,44 @@ with ubar_outer:
                     unsafe_allow_html=True,
                 )
                 st.markdown(
-                    "✓ **無限**錄音時長  \n"
+                    "✓ 無限錄音時長  \n"
                     "✓ 全部 AI 功能（翻譯、語氣、PPT）  \n"
-                    "✓ 優先處理 + 更高 daily limit  \n"
+                    "✓ 優先處理 + 更高每日使用限制  \n"
                     "✓ Email 支援"
                 )
-                pro_url = get_cached_upgrade_url(user["id"], user["email"], "pro")
-                if pro_url:
-                    st.link_button("⭐ 立即升級", pro_url,
-                                   type="primary", use_container_width=True)
+
+                # ⚙️ Detailed Stripe status check (debug 用)
+                if not cloud_stripe.STRIPE_AVAILABLE:
+                    st.warning(
+                        "⚠️ Stripe SDK 仲未 install\n\n"
+                        "Streamlit Cloud 仲喺 rebuild。等 5-10 分鐘 hard refresh 再試。"
+                    )
+                elif not st.secrets.get("STRIPE_SECRET_KEY"):
+                    st.warning(
+                        "⚠️ `STRIPE_SECRET_KEY` 未喺 Streamlit secrets\n\n"
+                        "去 share.streamlit.io → 你個 app → Settings → Secrets 加上去。"
+                    )
+                elif not st.secrets.get("STRIPE_PRICE_ID_PRO"):
+                    st.warning(
+                        "⚠️ `STRIPE_PRICE_ID_PRO` 未設定\n\n"
+                        "去 Stripe Dashboard 攞你 HKD 15 嘅 Price ID（price_xxx...），"
+                        "貼入 Streamlit secrets。"
+                    )
                 else:
-                    st.button("⭐ Stripe 未設定", disabled=True,
-                              use_container_width=True)
-                st.caption("付完款 admin 會手動 update 你 plan（webhook 仲整緊）")
+                    # All checks pass — try create checkout URL
+                    try:
+                        pro_url = cloud_stripe.create_checkout_session(
+                            user["id"], user["email"], "pro"
+                        )
+                        st.link_button(
+                            "⭐ 立即升級", pro_url,
+                            type="primary", use_container_width=True,
+                        )
+                        st.caption("撳完跳轉 Stripe Checkout，付完款 admin 會 update 你 plan")
+                    except Exception as e:
+                        st.error(f"⚠️ Stripe API 錯誤：{str(e)[:200]}")
+                        with st.expander("🔍 技術詳情"):
+                            st.exception(e)
         else:
             badge_color = {"pro": "#047857", "team": "#92400e"}.get(plan, "#1e66f5")
             badge_bg = {"pro": "#ecfdf5", "team": "#fef3c7"}.get(plan, "#eff6ff")
