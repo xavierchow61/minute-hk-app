@@ -1299,8 +1299,6 @@ with tab_settings:
     st.markdown(
         '<div style="margin-bottom:1.2rem;">'
         '<h2 style="margin:0;">⚙️ 個人化設定</h2>'
-        '<p style="color:#71717a;font-size:0.85rem;margin:0.2rem 0 0 0;">'
-        'AI 會用呢啲資料為你公司專屬訂制摘要、識別 jargon、套用業界術語。</p>'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -1311,8 +1309,7 @@ with tab_settings:
 
         with col_left:
             st.markdown(
-                '<div class="settings-card-title">🏢 公司資料</div>'
-                '<div class="settings-card-desc">AI 會 reference 你嘅 employer</div>',
+                '<div class="settings-card-title">🏢 公司資料</div>',
                 unsafe_allow_html=True,
             )
             new_company = st.text_input(
@@ -1336,8 +1333,7 @@ with tab_settings:
 
         with col_right:
             st.markdown(
-                '<div class="settings-card-title">📏 預設選項</div>'
-                '<div class="settings-card-desc">新會議嘅 default 設定</div>',
+                '<div class="settings-card-title">📏 預設選項</div>',
                 unsafe_allow_html=True,
             )
             length_keys = list(db.SUMMARY_LENGTHS.keys())
