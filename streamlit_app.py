@@ -1304,69 +1304,50 @@ with tab_settings:
     )
 
     with st.form("settings_form"):
-        # === Card 1: 公司資料（左） + 預設選項（右）===
-        col_left, col_right = st.columns(2)
+        # === Row 1: 公司名稱 + 行業類型（並排）===
+        col_a, col_b = st.columns(2)
 
-        with col_left:
-            st.markdown(
-                '<div class="settings-card-title">🏢 公司資料</div>',
-                unsafe_allow_html=True,
-            )
+        with col_a:
             new_company = st.text_input(
-                "公司名稱",
+                "🏢 公司名稱",
                 value=user_settings.get("company_name", ""),
                 placeholder="例：陳氏會計師樓",
-                label_visibility="collapsed",
             )
 
+        with col_b:
             industry_keys = list(db.INDUSTRIES.keys())
             try:
                 ind_idx = industry_keys.index(user_settings.get("industry", "generic"))
             except ValueError:
                 ind_idx = 0
             new_industry = st.selectbox(
-                "行業類型",
+                "🎯 行業類型",
                 options=industry_keys,
                 format_func=lambda k: db.INDUSTRIES[k],
                 index=ind_idx,
             )
 
-        with col_right:
-            st.markdown(
-                '<div class="settings-card-title">📏 預設選項</div>',
-                unsafe_allow_html=True,
-            )
-            length_keys = list(db.SUMMARY_LENGTHS.keys())
-            try:
-                len_idx = length_keys.index(user_settings.get("summary_length", "medium"))
-            except ValueError:
-                len_idx = 1
-            new_length = st.selectbox(
-                "預設摘要長度",
-                options=length_keys,
-                format_func=lambda k: db.SUMMARY_LENGTHS[k],
-                index=len_idx,
-            )
-            # 預留位置畀將來其他 default option
-            st.caption("💡 每次處理會議時都可以另揀")
-
-        st.markdown("<div style='margin: 0.5rem 0;'></div>", unsafe_allow_html=True)
-
-        # === Card 2: Jargon dictionary（full width）===
-        st.markdown(
-            '<div class="settings-card-title">📚 自定術語字典</div>'
-            '<div class="settings-card-desc">'
-            '加入你常用嘅客戶名、員工名、行業術語。AI 會特別留意呢啲詞，'
-            '識別準確度大幅提升。'
-            '</div>',
-            unsafe_allow_html=True,
+        # === Row 2: 預設摘要長度（full width，下面再加多一行揀）===
+        length_keys = list(db.SUMMARY_LENGTHS.keys())
+        try:
+            len_idx = length_keys.index(user_settings.get("summary_length", "medium"))
+        except ValueError:
+            len_idx = 1
+        new_length = st.selectbox(
+            "📏 預設摘要長度",
+            options=length_keys,
+            format_func=lambda k: db.SUMMARY_LENGTHS[k],
+            index=len_idx,
+            help="新會議嘅 default。每次處理時都可以另揀。",
         )
+
+        # === Row 3: Jargon（full width）===
         new_jargon = st.text_area(
-            "Jargon",
+            "📚 自定術語字典 (jargon / 人名 / 客戶名)",
             value=user_settings.get("jargon", ""),
             placeholder="例：HKFRS 18、Peter Chan、ABC Holdings、CFR、香港金管局、Cap. 622...",
-            height=110,
-            label_visibility="collapsed",
+            height=100,
+            help="用逗號或新行分隔。AI 會特別留意呢啲詞，識別準確度大幅提升。",
         )
 
         st.markdown("<div style='margin: 1rem 0;'></div>", unsafe_allow_html=True)
