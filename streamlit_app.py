@@ -6,6 +6,7 @@ import ai
 import auth
 import cloud_calendar
 import cloud_exporters
+import cloud_pptx
 import cloud_stripe
 import dashboard
 import db
@@ -785,7 +786,7 @@ with tab_new:
         st.markdown(st.session_state.last_summary)
 
         st.markdown("##### 📥 下載")
-        col_md, col_word, col_pdf, col_ics = st.columns(4)
+        col_md, col_word, col_pdf, col_ppt, col_ics = st.columns(5)
         base_name = st.session_state.get("last_meeting_name", "meeting").replace(" ", "_")
 
         with col_md:
@@ -823,35 +824,81 @@ with tab_new:
             except Exception as e:
                 st.button("📕 PDF (錯)", disabled=True, use_container_width=True, help=str(e))
 
+        with col_ppt:
+            if st.button("📊 PPT", use_container_width=True, key="ppt_main"):
+                with st.spinner("AI 結構化 + 生成 PPT..."):
+                    try:
+                        pptx_bytes = cloud_pptx.summary_to_pptx_bytes(st.session_state.last_summary)
+                        st.session_state.pptx_main = pptx_bytes
+                    except Exception as e:
+                        show_friendly_error(e, "PPT 生成")
+
+        if st.session_state.get("pptx_main"):
+            st.download_button(
+                "📥 下載 PPT (.pptx)",
+                st.session_state.pptx_main,
+                file_name=f"{base_name}_簡報.pptx",
+                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                key="dl_pptx_main",
+            )
+
         with col_ics:
-            # 📅 ICS file (Calendar export)
-            if st.button("📅 加入 Calendar", use_container_width=True, key="ics_main"):
+            # 📅 Calendar (extract action items)
+            if st.button("📅 加 Calendar", use_container_width=True, key="ics_main"):
                 with st.spinner("AI 抽取 action items..."):
                     try:
                         items = ai.extract_action_items(st.session_state.last_summary)
                         if not items:
-                            st.warning("冇 action items 可以加入 calendar")
+                            st.warning("冇 action items")
                         else:
-                            ics_bytes = cloud_calendar.action_items_to_ics(
+                            st.session_state.cal_items_main = items
+                            # 順便整 ICS 備用
+                            st.session_state.ics_main = cloud_calendar.action_items_to_ics(
                                 items,
                                 meeting_title=base_name,
                                 client=st.session_state.get("last_meeting_name", ""),
                             )
-                            st.session_state.ics_main = ics_bytes
-                            st.session_state.ics_main_count = len(items)
                     except Exception as e:
-                        st.error(f"ICS 生成失敗：{e}")
+                        show_friendly_error(e, "Action items 抽取")
 
-        if st.session_state.get("ics_main"):
-            cnt = st.session_state.get("ics_main_count", 0)
-            st.download_button(
-                f"📥 下載 .ics ({cnt} 個事項)",
-                st.session_state.ics_main,
-                file_name=f"{base_name}_calendar.ics",
-                mime="text/calendar",
-                key="dl_ics_main",
-            )
-            st.caption("💡 Double-click `.ics` → 自動 import 入 Google Calendar / Outlook / Apple Calendar")
+        # 顯示 calendar 選項（per action item）
+        if st.session_state.get("cal_items_main"):
+            items = st.session_state.cal_items_main
+            client_for_cal = st.session_state.get("last_meeting_name", "")
+            with st.expander(f"📅 {len(items)} 個 action items - 加入 Calendar", expanded=True):
+                for i, it in enumerate(items):
+                    task = it.get("task") or "（無描述）"
+                    deadline = it.get("deadline") or "未定"
+                    assignee = it.get("assignee") or "—"
+                    priority = it.get("priority", "medium")
+                    p_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(priority, "")
+
+                    g_url = cloud_calendar.google_calendar_url(it, client=client_for_cal, meeting_title=base_name)
+                    o_url = cloud_calendar.outlook_calendar_url(it, client=client_for_cal, meeting_title=base_name)
+
+                    st.markdown(
+                        f"**{p_emoji} {task}**  \n"
+                        f"<span style='color:#71717a;font-size:0.8rem;'>"
+                        f"👤 {assignee} · 📅 {deadline}</span>",
+                        unsafe_allow_html=True,
+                    )
+                    btn_col1, btn_col2 = st.columns(2)
+                    with btn_col1:
+                        st.link_button("🟦 Google Calendar", g_url, use_container_width=True)
+                    with btn_col2:
+                        st.link_button("🟪 Outlook", o_url, use_container_width=True)
+                    st.markdown("<hr style='margin:0.5rem 0; opacity:0.3;'>", unsafe_allow_html=True)
+
+                # 整體 ICS download
+                if st.session_state.get("ics_main"):
+                    st.download_button(
+                        "📥 一次過下載 .ics（其他 calendar app）",
+                        st.session_state.ics_main,
+                        file_name=f"{base_name}_calendar.ics",
+                        mime="text/calendar",
+                        key="dl_ics_main",
+                        use_container_width=True,
+                    )
 
         # === 🌐 翻譯 + 🎭 語氣分析 ===
         st.markdown("##### 🤖 AI 進階分析")

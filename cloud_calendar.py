@@ -1,6 +1,10 @@
-"""Generate .ics calendar file from action items
-任何 calendar app（Google / Outlook / Apple）都 import 得"""
+"""Generate .ics calendar file + Google/Outlook deep link URLs
+- ICS：universal download
+- Google Calendar link：一鍵 add 到用戶 Google Calendar
+- Outlook link：一鍵 add 到 outlook.live.com / Microsoft 365
+"""
 from datetime import date, datetime, timedelta
+from urllib.parse import quote
 
 
 def _escape(text: str) -> str:
@@ -13,6 +17,84 @@ def _escape(text: str) -> str:
         .replace(";", "\\;")
         .replace("\n", "\\n")
     )
+
+
+def _parse_deadline(deadline: str | None) -> date:
+    """Parse deadline string, fallback to today+7d"""
+    if deadline:
+        try:
+            return date.fromisoformat(deadline)
+        except (ValueError, TypeError):
+            pass
+    return date.today() + timedelta(days=7)
+
+
+def _build_description(item: dict, client: str = "", meeting_title: str = "") -> str:
+    """Build event description for an action item"""
+    parts = []
+    if client:
+        parts.append(f"客戶: {client}")
+    parts.append(f"負責人: {item.get('assignee') or '—'}")
+    parts.append(f"優先級: {item.get('priority') or 'medium'}")
+    if meeting_title:
+        parts.append(f"來自會議: {meeting_title}")
+    parts.append("")
+    parts.append("由 Minute.hk 自動生成")
+    return "\n".join(parts)
+
+
+# ============================================================
+# 🟦 Google Calendar deep link (一鍵 add，唔需要 OAuth)
+# ============================================================
+def google_calendar_url(item: dict, client: str = "", meeting_title: str = "") -> str:
+    """生成 Google Calendar event URL（用戶 click 即可 add）"""
+    due = _parse_deadline(item.get("deadline"))
+    next_day = due + timedelta(days=1)
+    # All-day event format: YYYYMMDD/YYYYMMDD
+    dates = f"{due.strftime('%Y%m%d')}/{next_day.strftime('%Y%m%d')}"
+
+    priority_emoji = {
+        "high": "🔴", "medium": "🟡", "low": "🟢"
+    }.get((item.get("priority") or "").lower(), "")
+    title = f"{priority_emoji} {item.get('task') or '會議跟進'}".strip()
+    desc = _build_description(item, client, meeting_title)
+
+    params = {
+        "action": "TEMPLATE",
+        "text": title,
+        "dates": dates,
+        "details": desc,
+    }
+    qs = "&".join(f"{k}={quote(str(v))}" for k, v in params.items())
+    return f"https://calendar.google.com/calendar/render?{qs}"
+
+
+# ============================================================
+# 🟪 Outlook deep link (Outlook.com / Microsoft 365)
+# ============================================================
+def outlook_calendar_url(item: dict, client: str = "", meeting_title: str = "") -> str:
+    """生成 Outlook event URL"""
+    due = _parse_deadline(item.get("deadline"))
+    # Use 9am-10am for default times
+    startdt = due.strftime("%Y-%m-%dT09:00:00")
+    enddt = due.strftime("%Y-%m-%dT10:00:00")
+
+    priority_emoji = {
+        "high": "🔴", "medium": "🟡", "low": "🟢"
+    }.get((item.get("priority") or "").lower(), "")
+    title = f"{priority_emoji} {item.get('task') or '會議跟進'}".strip()
+    desc = _build_description(item, client, meeting_title)
+
+    params = {
+        "path": "/calendar/action/compose",
+        "rru": "addevent",
+        "subject": title,
+        "body": desc,
+        "startdt": startdt,
+        "enddt": enddt,
+    }
+    qs = "&".join(f"{k}={quote(str(v))}" for k, v in params.items())
+    return f"https://outlook.live.com/calendar/0/deeplink/compose?{qs}"
 
 
 def action_items_to_ics(
