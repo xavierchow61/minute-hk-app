@@ -267,6 +267,24 @@ st.markdown("""
         padding-top: 0.8rem !important;
     }
 
+    /* ============ Reduce fade during reruns / tab switch ============ */
+    /* Streamlit 預設會 fade 緊個 page 等 user 知道 reload 緊
+       我哋將 fade 變少 (opacity 0.5 → 0.9) 等 UX 更 snappy */
+    .stApp [data-stale="true"] { opacity: 0.95 !important; }
+    div[data-testid="stAppViewContainer"] [data-stale="true"] {
+        opacity: 0.95 !important;
+    }
+    /* 隱藏右上角 running indicator (running man) */
+    [data-testid="stStatusWidget"] { display: none !important; }
+    /* Smooth transitions for tab content */
+    [data-testid="stTabs"] [data-baseweb="tab-panel"] {
+        animation: fadeIn 0.15s ease-out;
+    }
+    @keyframes fadeIn {
+        from { opacity: 0.7; }
+        to { opacity: 1; }
+    }
+
     /* Misc tightening */
     div[data-testid="stForm"] { border: none; padding: 0; }
     [data-testid="stVerticalBlock"] { gap: 0.5rem !important; }

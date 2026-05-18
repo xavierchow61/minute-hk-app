@@ -1,7 +1,18 @@
-"""Supabase DB queries for meetings + usage tracking"""
+"""Supabase DB queries for meetings + usage tracking (cached)"""
 from datetime import date, datetime, timedelta, timezone
 import streamlit as st
 from auth import get_supabase
+
+# ============================================================
+# Cache 策略：
+#   - User settings / plan：60s TTL（變化少）
+#   - Usage stats：30s TTL（半實時）
+#   - Meetings list / dashboard：30s TTL
+#   - 任何 mutation 之後 call invalidate_cache()
+# ============================================================
+def invalidate_cache():
+    """Mutation 之後 call 呢個，清晒所有 cache"""
+    st.cache_data.clear()
 
 # Free tier 限額
 FREE_MONTHLY_SECONDS = 1800        # 30 min/月
@@ -30,10 +41,13 @@ def save_meeting(user_id: str, summary: str, transcript: str = "",
         "audio_filename": audio_filename,
     }
     result = sb.table("meetings").insert(payload).execute()
+    invalidate_cache()  # ⚠️ Clear all cached queries after mutation
     return result.data[0] if result.data else {}
 
 
+@st.cache_data(ttl=30, show_spinner=False)
 def list_meetings(user_id: str, limit: int = 50) -> list[dict]:
+    """(cached 30s)"""
     sb = get_supabase()
     result = (
         sb.table("meetings")
@@ -101,6 +115,7 @@ def get_meeting(meeting_id: str, user_id: str) -> dict | None:
 def delete_meeting(meeting_id: str, user_id: str):
     sb = get_supabase()
     sb.table("meetings").delete().eq("id", meeting_id).eq("user_id", user_id).execute()
+    invalidate_cache()
 
 
 def update_meeting_summary(meeting_id: str, user_id: str,
@@ -125,12 +140,14 @@ def update_meeting_summary(meeting_id: str, user_id: str,
         "summary": new_summary,
         "duration_seconds": new_duration,
     }).eq("id", meeting_id).eq("user_id", user_id).execute()
+    invalidate_cache()
 
 
 # === Usage / Free tier checking ===
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_user_plan(user_id: str) -> str:
-    """Returns 'free' | 'pro' | 'team'"""
+    """Returns 'free' | 'pro' | 'team' (cached 60s)"""
     sb = get_supabase()
     result = (
         sb.table("user_plans")
@@ -167,8 +184,9 @@ SUMMARY_LENGTHS = {
 }
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_user_settings(user_id: str) -> dict:
-    """攞用戶設定（jargon、industry、length 等）"""
+    """攞用戶設定（jargon、industry、length 等） (cached 60s)"""
     sb = get_supabase()
     result = (
         sb.table("user_plans")
@@ -201,13 +219,15 @@ def update_user_settings(user_id: str, **kwargs) -> None:
         return
     sb = get_supabase()
     sb.table("user_plans").update(update_data).eq("user_id", user_id).execute()
+    invalidate_cache()
 
 
 # ============================================================
 # Dashboard analytics (#6)
 # ============================================================
+@st.cache_data(ttl=30, show_spinner=False)
 def get_dashboard_stats(user_id: str) -> dict:
-    """攞 dashboard 統計：總會議數、總分鐘、top clients/projects"""
+    """攞 dashboard 統計 (cached 30s)"""
     sb = get_supabase()
     result = (
         sb.table("meetings")
@@ -250,8 +270,9 @@ def get_dashboard_stats(user_id: str) -> dict:
     }
 
 
+@st.cache_data(ttl=20, show_spinner=False)
 def get_monthly_usage_seconds(user_id: str) -> float:
-    """Returns total seconds processed this calendar month"""
+    """Returns total seconds processed this calendar month (cached 20s)"""
     sb = get_supabase()
     now = datetime.now(timezone.utc)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -265,8 +286,9 @@ def get_monthly_usage_seconds(user_id: str) -> float:
     return sum(m.get("duration_seconds", 0) or 0 for m in (result.data or []))
 
 
+@st.cache_data(ttl=20, show_spinner=False)
 def get_daily_usage_seconds(user_id: str) -> float:
-    """Returns total seconds processed today (UTC midnight)"""
+    """Returns total seconds processed today (cached 20s)"""
     sb = get_supabase()
     now = datetime.now(timezone.utc)
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
