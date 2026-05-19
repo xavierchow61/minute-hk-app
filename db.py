@@ -15,15 +15,15 @@ def invalidate_cache():
     st.cache_data.clear()
 
 # Free tier 限額
-FREE_MONTHLY_SECONDS = 3600        # 60 min/月
-FREE_DAILY_SECONDS = 600           # 10 min/日
+FREE_MONTHLY_SECONDS = 6000        # 100 min/月
+FREE_DAILY_SECONDS = 900           # 15 min/日
 
 # Pro tier 限額
-PRO_MONTHLY_SECONDS = 60000        # 1000 min/月
+PRO_MONTHLY_SECONDS = 12000        # 200 min/月
 PRO_DAILY_SECONDS = 1800           # 30 min/日
 
 # Single file 限制
-MAX_SINGLE_FILE_SECONDS = 7200     # 單一檔案最多 2 小時
+MAX_SINGLE_FILE_SECONDS = 3600     # 單一檔案最多 1 小時
 
 
 def save_meeting(user_id: str, summary: str, transcript: str = "",
