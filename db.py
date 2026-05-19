@@ -260,38 +260,32 @@ def validate_invite_code(code: str) -> tuple[bool, str]:
         return False, f"驗證邀請碼失敗：{e}"
 
 
-def claim_invite_code_and_upgrade(code: str, user_id: str, target_plan: str = "pro") -> tuple[bool, str]:
-    """Atomically claim code + upgrade plan.
-    Returns (success, error_message).
-    Detects race condition: if code was claimed by someone else between validate and claim,
-    returns False without upgrading user_plans.
+def claim_invite_code_and_upgrade(code: str, user_id: str = None, target_plan: str = "pro") -> tuple[bool, str]:
+    """Call claim_invite_code RPC (SECURITY DEFINER, atomic, race-safe).
+
+    RPC uses auth.uid() internally + code.auto_upgrade_to for plan.
+    user_id / target_plan args 保留只為 backwards compat (ignored).
+    Returns (success, plan_or_error_msg).
     """
     if not code or not code.strip():
         return False, "邀請碼為空"
     sb = get_supabase()
     try:
-        # Mark code as used - returns updated rows (empty if race lost)
-        claim_result = (
-            sb.table("invite_codes")
-            .update({
-                "used_by_user_id": user_id,
-                "used_at": datetime.now(timezone.utc).isoformat(),
-            })
-            .eq("code", code.strip())
-            .is_("used_by_user_id", "null")
-            .execute()
-        )
-        if not claim_result.data:
-            # Race lost - someone else claimed first OR code didn't exist
-            return False, "邀請碼已經被人用咗（race condition）"
+        result = sb.rpc("claim_invite_code", {"p_code": code.strip()}).execute()
+        data = result.data
+        # supabase-py 對於 jsonb-returning function 通常 return dict 直接
+        # (有啲版本會 wrap 喺 list 度，安全 unwrap)
+        if isinstance(data, list) and data:
+            payload = data[0]
+        elif isinstance(data, dict):
+            payload = data
+        else:
+            return False, f"RPC 返回未預期格式：{data!r}"
 
-        # Upgrade user_plans (trigger has already created the row at signup time)
-        sb.table("user_plans").update({
-            "plan": target_plan,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("user_id", user_id).execute()
-        invalidate_user_cache()
-        return True, target_plan
+        if payload.get("ok"):
+            invalidate_user_cache()
+            return True, payload.get("plan", "pro")
+        return False, payload.get("error") or "邀請碼啟用失敗（未知原因）"
     except Exception as e:
         return False, f"系統錯誤：{e}"
 
