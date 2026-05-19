@@ -232,6 +232,54 @@ def get_user_settings(user_id: str) -> dict:
     }
 
 
+# ============================================================
+# Invite codes (beta tester gating + auto-upgrade)
+# ============================================================
+def validate_invite_code(code: str) -> tuple[bool, str]:
+    """Check if invite code exists and is unused.
+    Returns (is_valid, message_or_target_plan).
+    """
+    if not code or not code.strip():
+        return False, "請填邀請碼"
+    sb = get_supabase()
+    try:
+        result = (
+            sb.table("invite_codes")
+            .select("code, used_by_user_id, auto_upgrade_to")
+            .eq("code", code.strip())
+            .limit(1)
+            .execute()
+        )
+        if not result.data:
+            return False, "邀請碼唔啱"
+        row = result.data[0]
+        if row.get("used_by_user_id"):
+            return False, "呢個邀請碼已經用咗"
+        return True, row.get("auto_upgrade_to") or "pro"
+    except Exception as e:
+        return False, f"驗證邀請碼失敗：{e}"
+
+
+def claim_invite_code_and_upgrade(code: str, user_id: str, target_plan: str = "pro") -> bool:
+    """Mark code as used and upgrade user to target plan."""
+    sb = get_supabase()
+    try:
+        # Mark code as used
+        sb.table("invite_codes").update({
+            "used_by_user_id": user_id,
+            "used_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("code", code.strip()).is_("used_by_user_id", "null").execute()
+
+        # Upgrade user_plans
+        sb.table("user_plans").update({
+            "plan": target_plan,
+        }).eq("user_id", user_id).execute()
+        invalidate_user_cache()
+        return True
+    except Exception:
+        return False
+
+
 def update_user_settings(user_id: str, **kwargs) -> None:
     """Update user 設定。允許 fields: company_name, industry, jargon, summary_length"""
     allowed = {"company_name", "industry", "jargon", "summary_length"}

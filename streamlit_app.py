@@ -631,6 +631,7 @@ if not auth.is_logged_in():
             if "captcha_a" not in st.session_state:
                 _new_captcha()
 
+            st.caption("🎟️ Beta 測試中 - 需要邀請碼註冊")
             with st.form("signup_form"):
                 email = st.text_input("Email", placeholder="you@example.com",
                                       key="su_email", label_visibility="collapsed")
@@ -638,6 +639,12 @@ if not auth.is_logged_in():
                                          key="su_pass", label_visibility="collapsed")
                 password2 = st.text_input("Confirm", type="password", placeholder="確認密碼",
                                           key="su_pass2", label_visibility="collapsed")
+                invite_code = st.text_input(
+                    "邀請碼",
+                    placeholder="🎟️ 邀請碼（測試期免費升 Pro）",
+                    key="su_invite",
+                    label_visibility="collapsed",
+                )
                 # 🤖 Math captcha 防 bot
                 a = st.session_state.captcha_a
                 b = st.session_state.captcha_b
@@ -648,7 +655,7 @@ if not auth.is_logged_in():
                     key="captcha_input",
                     label_visibility="collapsed",
                 )
-                submit = st.form_submit_button("✨ 免費註冊", type="primary", use_container_width=True)
+                submit = st.form_submit_button("✨ 用邀請碼註冊", type="primary", use_container_width=True)
                 if submit:
                     if not email or not password:
                         st.error("請填 email 同密碼")
@@ -658,15 +665,30 @@ if not auth.is_logged_in():
                         st.error(f"驗證碼錯誤。{a} {op} {b} = ?")
                         _new_captcha()
                     else:
-                        ok, msg = auth.signup(email, password)
-                        if ok:
-                            st.success(msg)
-                            _new_captcha()  # Refresh captcha
-                            if "正在登入" in msg:
-                                st.rerun()
-                        else:
-                            st.error(msg)
+                        # Validate invite code BEFORE signup
+                        code_ok, code_info = db.validate_invite_code(invite_code)
+                        if not code_ok:
+                            st.error(f"🎟️ {code_info}")
                             _new_captcha()
+                        else:
+                            target_plan = code_info  # "pro" / "team" / etc
+                            ok, msg = auth.signup(email, password)
+                            if ok:
+                                # Claim code + upgrade to Pro
+                                new_user = auth.get_user()
+                                if new_user:
+                                    db.claim_invite_code_and_upgrade(
+                                        invite_code, new_user["id"], target_plan
+                                    )
+                                    st.success(f"🎉 註冊成功！邀請碼已啟用 - 你而家係 {target_plan.upper()} 用戶")
+                                else:
+                                    st.success(msg + "\n\n登入後邀請碼會自動啟用。")
+                                _new_captcha()  # Refresh captcha
+                                if "正在登入" in msg or new_user:
+                                    st.rerun()
+                            else:
+                                st.error(msg)
+                                _new_captcha()
 
         with tab_reset:
             with st.form("reset_form"):
