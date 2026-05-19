@@ -10,9 +10,30 @@ from auth import get_supabase
 #   - Meetings list / dashboard：30s TTL
 #   - 任何 mutation 之後 call invalidate_cache()
 # ============================================================
+def invalidate_meeting_cache():
+    """新增 / 修改 / 刪 meeting 後 call - 只清相關 cache"""
+    try:
+        list_meetings.clear()
+        get_dashboard_stats.clear()
+        get_monthly_usage_seconds.clear()
+        get_daily_usage_seconds.clear()
+        get_summaries_for_wordcloud.clear()
+    except Exception:
+        pass
+
+
+def invalidate_user_cache():
+    """改 plan / settings 之後 call - 只清 user-level cache"""
+    try:
+        get_user_plan.clear()
+        get_user_settings.clear()
+    except Exception:
+        pass
+
+
+# Backward compat
 def invalidate_cache():
-    """Mutation 之後 call 呢個，清晒所有 cache"""
-    st.cache_data.clear()
+    invalidate_meeting_cache()
 
 # Free tier 限額
 FREE_MONTHLY_SECONDS = 6000        # 100 min/月
@@ -41,7 +62,7 @@ def save_meeting(user_id: str, summary: str, transcript: str = "",
         "audio_filename": audio_filename,
     }
     result = sb.table("meetings").insert(payload).execute()
-    invalidate_cache()  # ⚠️ Clear all cached queries after mutation
+    invalidate_meeting_cache()  # ⚠️ Clear all cached queries after mutation
     return result.data[0] if result.data else {}
 
 
@@ -115,7 +136,7 @@ def get_meeting(meeting_id: str, user_id: str) -> dict | None:
 def delete_meeting(meeting_id: str, user_id: str):
     sb = get_supabase()
     sb.table("meetings").delete().eq("id", meeting_id).eq("user_id", user_id).execute()
-    invalidate_cache()
+    invalidate_meeting_cache()
 
 
 def update_meeting_summary(meeting_id: str, user_id: str,
@@ -140,7 +161,7 @@ def update_meeting_summary(meeting_id: str, user_id: str,
         "summary": new_summary,
         "duration_seconds": new_duration,
     }).eq("id", meeting_id).eq("user_id", user_id).execute()
-    invalidate_cache()
+    invalidate_meeting_cache()
 
 
 # === Usage / Free tier checking ===
@@ -219,19 +240,20 @@ def update_user_settings(user_id: str, **kwargs) -> None:
         return
     sb = get_supabase()
     sb.table("user_plans").update(update_data).eq("user_id", user_id).execute()
-    invalidate_cache()
+    invalidate_user_cache()
 
 
 # ============================================================
 # Dashboard analytics (#6)
 # ============================================================
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def get_dashboard_stats(user_id: str) -> dict:
-    """攞 dashboard 統計 (cached 30s)"""
+    """攞 dashboard 統計（**唔 fetch summary text**，加快 10x）"""
     sb = get_supabase()
+    # 只 select metadata fields - 唔好 fetch summary（大）
     result = (
         sb.table("meetings")
-        .select("id, created_at, client, project, duration_seconds, summary")
+        .select("id, created_at, client, project, duration_seconds")
         .eq("user_id", user_id)
         .order("created_at", desc=False)
         .execute()
@@ -241,22 +263,17 @@ def get_dashboard_stats(user_id: str) -> dict:
     total_count = len(meetings)
     total_seconds = sum(m.get("duration_seconds", 0) or 0 for m in meetings)
 
-    # Client / project 統計
     from collections import Counter
     client_counter = Counter(m.get("client") for m in meetings if m.get("client"))
     project_counter = Counter(m.get("project") for m in meetings if m.get("project"))
 
-    # 月份 trend
     monthly = Counter()
     for m in meetings:
         try:
-            month = m["created_at"][:7]  # YYYY-MM
+            month = m["created_at"][:7]
             monthly[month] += 1
         except Exception:
             pass
-
-    # All summary text（俾 word cloud）
-    all_summaries = "\n\n".join(m.get("summary", "") for m in meetings)
 
     return {
         "total_count": total_count,
@@ -265,9 +282,20 @@ def get_dashboard_stats(user_id: str) -> dict:
         "top_clients": client_counter.most_common(10),
         "top_projects": project_counter.most_common(10),
         "monthly_counts": dict(sorted(monthly.items())),
-        "all_summaries_text": all_summaries,
-        "meetings": meetings,
     }
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_summaries_for_wordcloud(user_id: str) -> str:
+    """獨立 query 攞 summary text - 只喺用戶撳「生成詞雲」時先 call"""
+    sb = get_supabase()
+    result = (
+        sb.table("meetings")
+        .select("summary")
+        .eq("user_id", user_id)
+        .execute()
+    )
+    return "\n\n".join(m.get("summary", "") for m in (result.data or []))
 
 
 @st.cache_data(ttl=20, show_spinner=False)

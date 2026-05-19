@@ -1798,16 +1798,15 @@ with tab_dashboard:
         elif st.button("🔄 生成詞雲", key="gen_wordcloud"):
             with st.spinner("分析所有會議文字..."):
                 try:
+                    # Lazy fetch summaries (only when clicked)
+                    summaries_text = db.get_summaries_for_wordcloud(user["id"])
                     img_bytes = dashboard.generate_wordcloud_image(
-                        stats["all_summaries_text"], max_words=80
+                        summaries_text, max_words=80
                     )
                     if img_bytes:
                         st.session_state.wordcloud_img = img_bytes
                     else:
-                        # Fallback: text list
-                        keywords = dashboard.extract_keywords(
-                            stats["all_summaries_text"], top_n=30
-                        )
+                        keywords = dashboard.extract_keywords(summaries_text, top_n=30)
                         st.session_state.wordcloud_keywords = keywords
                 except Exception as e:
                     st.error(f"詞雲生成失敗：{e}")
