@@ -1009,29 +1009,30 @@ with tab_new:
                         with st.expander("🔍 技術詳情"):
                             st.exception(e)
 
-    # 顯示最後一次嘅 summary + download buttons + translate + sentiment
-    if st.session_state.get("last_summary"):
+    # 顯示最後一次嘅 summary - 用 @st.fragment 等 edit/save 只 rerun 呢一 block
+    @st.fragment
+    def _render_summary_edit_main():
+        if not st.session_state.get("last_summary"):
+            return
+
         st.divider()
 
-        # === 紀要顯示 / 編輯模式 ===
         header_col, edit_col = st.columns([5, 1])
         with header_col:
             st.markdown("#### 📝 會議紀要")
         with edit_col:
             if st.session_state.get("edit_main_mode"):
-                # 編輯中 - 顯示 cancel
                 if st.button("❌ 取消", key="cancel_edit_main", use_container_width=True):
                     st.session_state.pop("edit_main_mode", None)
                     st.session_state.pop("edit_main_buffer", None)
-                    st.rerun()
+                    st.rerun(scope="fragment")
             else:
                 if st.button("✏️ 編輯", key="edit_main_btn", use_container_width=True):
                     st.session_state.edit_main_mode = True
                     st.session_state.edit_main_buffer = st.session_state.last_summary
-                    st.rerun()
+                    st.rerun(scope="fragment")
 
         if st.session_state.get("edit_main_mode"):
-            # 編輯模式：text_area
             edited = st.text_area(
                 "編輯紀要（Markdown）",
                 value=st.session_state.edit_main_buffer,
@@ -1041,9 +1042,8 @@ with tab_new:
             )
             save_col, _ = st.columns([1, 4])
             with save_col:
-                if st.button("💾 儲存修改", type="primary", use_container_width=True,
-                             key="save_edit_main"):
-                    # Update DB if meeting was saved
+                if st.button("💾 儲存修改", type="primary",
+                             use_container_width=True, key="save_edit_main"):
                     if st.session_state.get("current_meeting_id"):
                         try:
                             db.update_meeting_summary(
@@ -1057,15 +1057,17 @@ with tab_new:
                     st.session_state.last_summary = edited
                     st.session_state.pop("edit_main_mode", None)
                     st.session_state.pop("edit_main_buffer", None)
-                    # Clear cached translations (since summary changed)
                     st.session_state.pop("last_translation", None)
                     st.session_state.pop("last_sentiment", None)
                     st.session_state.pop("pptx_main", None)
                     st.toast("✅ 紀要已更新", icon="✏️")
-                    st.rerun()
+                    st.rerun(scope="fragment")
         else:
-            # 顯示模式：rendered markdown
             st.markdown(st.session_state.last_summary)
+
+    _render_summary_edit_main()
+
+    if st.session_state.get("last_summary"):
 
         st.markdown("##### 📥 下載")
         col_md, col_word, col_pdf, col_ppt, col_ics = st.columns(5)
