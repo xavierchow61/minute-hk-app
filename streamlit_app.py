@@ -659,13 +659,21 @@ if not auth.is_logged_in():
                     key="su_invite",
                     label_visibility="collapsed",
                 )
-                # 🤖 Math captcha 防 bot
+                # 🤖 Math captcha 防 bot - 題目用 caption 永遠顯示 (唔淨係 placeholder)
                 a = st.session_state.captcha_a
                 b = st.session_state.captcha_b
                 op = st.session_state.captcha_op
+                st.markdown(
+                    f"<div style='font-size:0.85rem;color:#475569;margin-top:0.5rem;"
+                    f"padding:0.4rem 0.6rem;background:#f1f5f9;border-radius:6px;"
+                    f"border-left:3px solid #06b6d4;'>"
+                    f"🤖 防 bot 驗證：請計 <strong>{a} {op} {b} = ?</strong>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
                 captcha_ans = st.text_input(
                     "驗證碼",
-                    placeholder=f"🤖 防 bot 驗證：{a} {op} {b} = ?",
+                    placeholder="輸入答案",
                     key="captcha_input",
                     label_visibility="collapsed",
                 )
@@ -677,13 +685,13 @@ if not auth.is_logged_in():
                         st.error("兩次密碼唔同")
                     elif not _check_captcha(captcha_ans):
                         st.error(f"驗證碼錯誤。{a} {op} {b} = ?")
-                        _new_captcha()
+                        _new_captcha()  # regen 防 bot brute force
                     else:
                         # Validate invite code BEFORE signup (read-only check)
                         code_ok, code_info = db.validate_invite_code(invite_code)
                         if not code_ok:
                             st.error(f"🎟️ {code_info}")
-                            _new_captcha()
+                            # 不 regen captcha - 用戶只係填錯邀請碼，唔好為難佢
                         else:
                             target_plan = code_info  # "pro" / "team" / etc
                             ok, msg = auth.signup(email, password)
@@ -698,11 +706,10 @@ if not auth.is_logged_in():
                                         st.success(f"🎉 註冊成功！邀請碼已啟用 - 你而家係 {info.upper()} 用戶")
                                     else:
                                         st.warning(f"註冊咗，但邀請碼啟用失敗：{info}")
-                                    _new_captcha()
+                                    _new_captcha()  # success - regen for safety
                                     st.rerun()
                                 else:
                                     # Email confirmation 開咗 - 唔可以即刻 claim
-                                    # 將 code 存喺 session_state，等用戶 verify email + login 之後 claim
                                     st.session_state["_pending_invite_code"] = invite_code.strip()
                                     st.session_state["_pending_invite_plan"] = target_plan
                                     st.success(
@@ -710,10 +717,10 @@ if not auth.is_logged_in():
                                         "✅ 邀請碼已 reserved，"
                                         f"verify email 之後喺呢個 browser 登入即升 {target_plan.upper()}。"
                                     )
-                                    _new_captcha()
+                                    _new_captcha()  # success - regen
                             else:
                                 st.error(msg)
-                                _new_captcha()
+                                # 不 regen captcha - signup 失敗（例如 email 已註冊）唔好為難用戶
 
         with tab_reset:
             with st.form("reset_form"):
