@@ -696,7 +696,7 @@ if plan == "free":
     monthly_limit_str = f"{db.FREE_MONTHLY_SECONDS / 60:.0f}"
     daily_limit_str = f"{db.FREE_DAILY_SECONDS / 60:.0f}"
 else:
-    monthly_limit_str = "∞"
+    monthly_limit_str = f"{db.PRO_MONTHLY_SECONDS / 60:.0f}"
     daily_limit_str = f"{db.PRO_DAILY_SECONDS / 60:.0f}"
 
 # === Top User Bar (主畫面上方) ===
@@ -1438,7 +1438,8 @@ with tab_history:
                     else:
                         st.markdown(full["summary"])
 
-                    col_md, col_word, col_pdf, col_ppt, col_del = st.columns([1, 1, 1, 1, 1])
+                    # 4-column download row (mobile-safe: avoids auto-wrap)
+                    col_md, col_word, col_pdf, col_ppt = st.columns(4)
                     base_name = (client or "meeting").replace(" ", "_")
 
                     with col_md:
@@ -1491,6 +1492,9 @@ with tab_history:
                             if st.button("🔒 PPT", key=f"ppt_lk_{m['id']}",
                                          use_container_width=True, help="⭐ Pro 功能"):
                                 show_pro_locked_toast("PPT 生成")
+
+                    # 刪除 button - 獨立一行，避免誤撳 + mobile wrap
+                    _, col_del = st.columns([3, 1])
                     with col_del:
                         if st.button("🗑️ 刪除", key=f"del_{m['id']}", use_container_width=True):
                             db.delete_meeting(m["id"], user["id"])
