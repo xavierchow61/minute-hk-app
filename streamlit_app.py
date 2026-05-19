@@ -1732,6 +1732,8 @@ with tab_history:
 
 # ============ Tab 3: Dashboard ============
 with tab_dashboard:
+  @st.fragment
+  def _render_dashboard_tab():
     stats = db.get_dashboard_stats(user["id"])
 
     if stats["total_count"] == 0:
@@ -1823,9 +1825,13 @@ with tab_dashboard:
             )
             st.markdown(kw_text)
 
+  _render_dashboard_tab()
+
 
 # ============ Tab 4: Settings (Redesigned Card Layout) ============
 with tab_settings:
+  @st.fragment
+  def _render_settings_tab():
     st.markdown(
         '<div style="margin-bottom:1.2rem;">'
         '<h2 style="margin:0;">⚙️ 個人化設定</h2>'
@@ -1929,8 +1935,10 @@ with tab_settings:
                     summary_length=new_length,
                 )
                 st.success("✅ 設定已儲存！下次處理會議時生效。")
-                st.rerun()
+                st.rerun(scope="fragment")
             except Exception as e:
                 st.error(f"儲存失敗：{e}")
 
     # 帳號資料 section 隱藏 — Email + Plan 已喺 top user bar 顯示
+
+  _render_settings_tab()
