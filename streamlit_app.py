@@ -590,96 +590,99 @@ elif qp.get("upgrade") == "cancel":
 
 # ============ Auth UI (if not logged in) ============
 if not auth.is_logged_in():
-    st.markdown(
-        f"""
-        <div style='text-align:center;margin:0.5rem 0 0.8rem 0;'>
-            <img src='{LOGO_DATA_URI}' alt='Minute.hk' style='width:48px;height:48px;'/>
-            <h2 style='margin:0.4rem 0 0 0;font-size:1.4rem;'>
-                Minute<span style='color:#06b6d4;'>.hk</span>
-            </h2>
-            <p style='color:#64748b;margin:0.2rem 0 0 0;font-size:0.82rem;'>
-                廣東話會議 AI 摘要 · 香港人專用
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    # Center the login card with side columns (desktop: ~33% width, mobile: full)
+    _auth_l, auth_col, _auth_r = st.columns([1, 2, 1])
+    with auth_col:
+        st.markdown(
+            f"""
+            <div style='text-align:center;margin:0.5rem 0 0.8rem 0;'>
+                <img src='{LOGO_DATA_URI}' alt='Minute.hk' style='width:48px;height:48px;'/>
+                <h2 style='margin:0.4rem 0 0 0;font-size:1.4rem;'>
+                    Minute<span style='color:#06b6d4;'>.hk</span>
+                </h2>
+                <p style='color:#64748b;margin:0.2rem 0 0 0;font-size:0.82rem;'>
+                    廣東話會議 AI 摘要 · 香港人專用
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    tab_login, tab_signup, tab_reset = st.tabs(["🔓 登入", "✨ 註冊", "🔑 忘記密碼"])
+        tab_login, tab_signup, tab_reset = st.tabs(["🔓 登入", "✨ 註冊", "🔑 忘記密碼"])
 
-    with tab_login:
-        with st.form("login_form"):
-            email = st.text_input("Email", placeholder="you@example.com", label_visibility="collapsed")
-            password = st.text_input("Password", type="password", placeholder="密碼", label_visibility="collapsed")
-            submit = st.form_submit_button("登入", type="primary", use_container_width=True)
-            if submit:
-                if not email or not password:
-                    st.error("請填 email 同密碼")
-                else:
-                    ok, msg = auth.login(email, password)
-                    if ok:
-                        st.success(msg)
-                        st.rerun()
+        with tab_login:
+            with st.form("login_form"):
+                email = st.text_input("Email", placeholder="you@example.com", label_visibility="collapsed")
+                password = st.text_input("Password", type="password", placeholder="密碼", label_visibility="collapsed")
+                submit = st.form_submit_button("登入", type="primary", use_container_width=True)
+                if submit:
+                    if not email or not password:
+                        st.error("請填 email 同密碼")
                     else:
-                        st.error(msg)
-
-    with tab_signup:
-        # Init captcha (一次性 per session)
-        if "captcha_a" not in st.session_state:
-            _new_captcha()
-
-        with st.form("signup_form"):
-            email = st.text_input("Email", placeholder="you@example.com",
-                                  key="su_email", label_visibility="collapsed")
-            password = st.text_input("Password", type="password", placeholder="密碼（至少 6 位）",
-                                     key="su_pass", label_visibility="collapsed")
-            password2 = st.text_input("Confirm", type="password", placeholder="確認密碼",
-                                      key="su_pass2", label_visibility="collapsed")
-            # 🤖 Math captcha 防 bot
-            a = st.session_state.captcha_a
-            b = st.session_state.captcha_b
-            op = st.session_state.captcha_op
-            captcha_ans = st.text_input(
-                "驗證碼",
-                placeholder=f"🤖 防 bot 驗證：{a} {op} {b} = ?",
-                key="captcha_input",
-                label_visibility="collapsed",
-            )
-            submit = st.form_submit_button("✨ 免費註冊", type="primary", use_container_width=True)
-            if submit:
-                if not email or not password:
-                    st.error("請填 email 同密碼")
-                elif password != password2:
-                    st.error("兩次密碼唔同")
-                elif not _check_captcha(captcha_ans):
-                    st.error(f"驗證碼錯誤。{a} {op} {b} = ?")
-                    _new_captcha()
-                else:
-                    ok, msg = auth.signup(email, password)
-                    if ok:
-                        st.success(msg)
-                        _new_captcha()  # Refresh captcha
-                        if "正在登入" in msg:
+                        ok, msg = auth.login(email, password)
+                        if ok:
+                            st.success(msg)
                             st.rerun()
-                    else:
-                        st.error(msg)
+                        else:
+                            st.error(msg)
+
+        with tab_signup:
+            # Init captcha (一次性 per session)
+            if "captcha_a" not in st.session_state:
+                _new_captcha()
+
+            with st.form("signup_form"):
+                email = st.text_input("Email", placeholder="you@example.com",
+                                      key="su_email", label_visibility="collapsed")
+                password = st.text_input("Password", type="password", placeholder="密碼（至少 6 位）",
+                                         key="su_pass", label_visibility="collapsed")
+                password2 = st.text_input("Confirm", type="password", placeholder="確認密碼",
+                                          key="su_pass2", label_visibility="collapsed")
+                # 🤖 Math captcha 防 bot
+                a = st.session_state.captcha_a
+                b = st.session_state.captcha_b
+                op = st.session_state.captcha_op
+                captcha_ans = st.text_input(
+                    "驗證碼",
+                    placeholder=f"🤖 防 bot 驗證：{a} {op} {b} = ?",
+                    key="captcha_input",
+                    label_visibility="collapsed",
+                )
+                submit = st.form_submit_button("✨ 免費註冊", type="primary", use_container_width=True)
+                if submit:
+                    if not email or not password:
+                        st.error("請填 email 同密碼")
+                    elif password != password2:
+                        st.error("兩次密碼唔同")
+                    elif not _check_captcha(captcha_ans):
+                        st.error(f"驗證碼錯誤。{a} {op} {b} = ?")
                         _new_captcha()
+                    else:
+                        ok, msg = auth.signup(email, password)
+                        if ok:
+                            st.success(msg)
+                            _new_captcha()  # Refresh captcha
+                            if "正在登入" in msg:
+                                st.rerun()
+                        else:
+                            st.error(msg)
+                            _new_captcha()
 
-    with tab_reset:
-        with st.form("reset_form"):
-            email = st.text_input("Email", key="rp_email",
-                                  placeholder="你註冊嘅 email", label_visibility="collapsed")
-            submit = st.form_submit_button("📧 寄重設密碼 link", use_container_width=True)
-            if submit and email:
-                ok, msg = auth.reset_password(email)
-                (st.success if ok else st.error)(msg)
+        with tab_reset:
+            with st.form("reset_form"):
+                email = st.text_input("Email", key="rp_email",
+                                      placeholder="你註冊嘅 email", label_visibility="collapsed")
+                submit = st.form_submit_button("📧 寄重設密碼 link", use_container_width=True)
+                if submit and email:
+                    ok, msg = auth.reset_password(email)
+                    (st.success if ok else st.error)(msg)
 
-    st.markdown(
-        "<p style='text-align:center;font-size:0.78rem;color:#94a3b8;margin-top:1rem;'>"
-        "<a href='https://minutehk.vercel.app' style='color:#1e66f5;text-decoration:none;'>← 返主頁</a>"
-        "&nbsp;·&nbsp;免費版 30 分鐘/月</p>",
-        unsafe_allow_html=True,
-    )
+        st.markdown(
+            "<p style='text-align:center;font-size:0.78rem;color:#94a3b8;margin-top:1rem;'>"
+            "<a href='https://minutehk.vercel.app' style='color:#1e66f5;text-decoration:none;'>← 返主頁</a>"
+            "&nbsp;·&nbsp;免費版 100 分鐘/月</p>",
+            unsafe_allow_html=True,
+        )
 
     st.stop()
 
