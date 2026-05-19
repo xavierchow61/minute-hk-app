@@ -988,15 +988,21 @@ with tab_new:
                             duration_seconds=est_duration_sec,
                             audio_filename=uploaded.name,
                         )
+                        # Track meeting_id 俾 edit feature
+                        if saved and saved.get("id"):
+                            st.session_state.current_meeting_id = saved["id"]
                         st.write("✅ 已儲存")
                         status.update(label="✅ 完成！", state="complete")
 
                         st.session_state.last_summary = result["summary"]
                         st.session_state.last_meeting_name = client_name or "會議"
-                        # 新 meeting → reset 之前嘅翻譯/語氣 cache
+                        # 新 meeting → reset 之前嘅 cache
                         st.session_state.pop("last_translation", None)
                         st.session_state.pop("last_translation_lang", None)
                         st.session_state.pop("last_sentiment", None)
+                        st.session_state.pop("pptx_main", None)
+                        st.session_state.pop("edit_main_mode", None)
+                        st.session_state.pop("edit_main_buffer", None)
 
                     except Exception as e:
                         show_friendly_error(e, "AI 處理")
@@ -1006,8 +1012,60 @@ with tab_new:
     # 顯示最後一次嘅 summary + download buttons + translate + sentiment
     if st.session_state.get("last_summary"):
         st.divider()
-        st.markdown("#### 📝 會議紀要")
-        st.markdown(st.session_state.last_summary)
+
+        # === 紀要顯示 / 編輯模式 ===
+        header_col, edit_col = st.columns([5, 1])
+        with header_col:
+            st.markdown("#### 📝 會議紀要")
+        with edit_col:
+            if st.session_state.get("edit_main_mode"):
+                # 編輯中 - 顯示 cancel
+                if st.button("❌ 取消", key="cancel_edit_main", use_container_width=True):
+                    st.session_state.pop("edit_main_mode", None)
+                    st.session_state.pop("edit_main_buffer", None)
+                    st.rerun()
+            else:
+                if st.button("✏️ 編輯", key="edit_main_btn", use_container_width=True):
+                    st.session_state.edit_main_mode = True
+                    st.session_state.edit_main_buffer = st.session_state.last_summary
+                    st.rerun()
+
+        if st.session_state.get("edit_main_mode"):
+            # 編輯模式：text_area
+            edited = st.text_area(
+                "編輯紀要（Markdown）",
+                value=st.session_state.edit_main_buffer,
+                height=400,
+                label_visibility="collapsed",
+                key="edit_main_textarea",
+            )
+            save_col, _ = st.columns([1, 4])
+            with save_col:
+                if st.button("💾 儲存修改", type="primary", use_container_width=True,
+                             key="save_edit_main"):
+                    # Update DB if meeting was saved
+                    if st.session_state.get("current_meeting_id"):
+                        try:
+                            db.update_meeting_summary(
+                                meeting_id=st.session_state.current_meeting_id,
+                                user_id=user["id"],
+                                new_summary=edited,
+                                additional_duration=0,
+                            )
+                        except Exception as e:
+                            st.error(f"DB update 失敗：{e}")
+                    st.session_state.last_summary = edited
+                    st.session_state.pop("edit_main_mode", None)
+                    st.session_state.pop("edit_main_buffer", None)
+                    # Clear cached translations (since summary changed)
+                    st.session_state.pop("last_translation", None)
+                    st.session_state.pop("last_sentiment", None)
+                    st.session_state.pop("pptx_main", None)
+                    st.toast("✅ 紀要已更新", icon="✏️")
+                    st.rerun()
+        else:
+            # 顯示模式：rendered markdown
+            st.markdown(st.session_state.last_summary)
 
         st.markdown("##### 📥 下載")
         col_md, col_word, col_pdf, col_ppt, col_ics = st.columns(5)
@@ -1323,7 +1381,61 @@ with tab_history:
             with st.expander(title):
                 full = db.get_meeting(m["id"], user["id"])
                 if full:
-                    st.markdown(full["summary"])
+                    edit_key = f"h_edit_mode_{m['id']}"
+                    buf_key = f"h_edit_buf_{m['id']}"
+
+                    # Edit toggle header
+                    h_head_col, h_edit_col = st.columns([5, 1])
+                    with h_head_col:
+                        st.markdown(f"**📝 {client or 'Meeting'} 紀要**")
+                    with h_edit_col:
+                        if st.session_state.get(edit_key):
+                            if st.button("❌ 取消", key=f"h_cancel_{m['id']}",
+                                         use_container_width=True):
+                                st.session_state.pop(edit_key, None)
+                                st.session_state.pop(buf_key, None)
+                                st.rerun()
+                        else:
+                            if st.button("✏️ 編輯", key=f"h_edit_btn_{m['id']}",
+                                         use_container_width=True):
+                                st.session_state[edit_key] = True
+                                st.session_state[buf_key] = full["summary"]
+                                st.rerun()
+
+                    if st.session_state.get(edit_key):
+                        # 編輯模式
+                        edited = st.text_area(
+                            "編輯紀要",
+                            value=st.session_state[buf_key],
+                            height=350,
+                            label_visibility="collapsed",
+                            key=f"h_edit_ta_{m['id']}",
+                        )
+                        save_col, _ = st.columns([1, 3])
+                        with save_col:
+                            if st.button("💾 儲存", type="primary",
+                                         use_container_width=True,
+                                         key=f"h_save_{m['id']}"):
+                                try:
+                                    db.update_meeting_summary(
+                                        meeting_id=m["id"],
+                                        user_id=user["id"],
+                                        new_summary=edited,
+                                        additional_duration=0,
+                                    )
+                                    st.session_state.pop(edit_key, None)
+                                    st.session_state.pop(buf_key, None)
+                                    # Clear cached generated content
+                                    for k in [f"h_tr_{m['id']}", f"h_sent_{m['id']}",
+                                              f"h_pptx_{m['id']}", f"h_ics_{m['id']}"]:
+                                        st.session_state.pop(k, None)
+                                    st.toast("✅ 紀要已更新", icon="✏️")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"儲存失敗：{e}")
+                    else:
+                        st.markdown(full["summary"])
+
                     col_md, col_word, col_pdf, col_ppt, col_del = st.columns([1, 1, 1, 1, 1])
                     base_name = (client or "meeting").replace(" ", "_")
 
