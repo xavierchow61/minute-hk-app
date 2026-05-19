@@ -621,6 +621,20 @@ if not auth.is_logged_in():
                     else:
                         ok, msg = auth.login(email, password)
                         if ok:
+                            # 如果有 pending invite code (signup 後要 verify email 嗰陣 stored)，
+                            # 喺登入成功之後即刻 claim
+                            pending = st.session_state.pop("_pending_invite_code", None)
+                            pending_plan = st.session_state.pop("_pending_invite_plan", "pro")
+                            if pending:
+                                u = auth.get_user()
+                                if u:
+                                    ok2, info = db.claim_invite_code_and_upgrade(
+                                        pending, u["id"], pending_plan
+                                    )
+                                    if ok2:
+                                        st.success(f"🎉 邀請碼已啟用 - 你而家係 {info.upper()} 用戶")
+                                    else:
+                                        st.warning(f"⚠️ 邀請碼啟用失敗：{info}")
                             st.success(msg)
                             st.rerun()
                         else:
@@ -665,7 +679,7 @@ if not auth.is_logged_in():
                         st.error(f"驗證碼錯誤。{a} {op} {b} = ?")
                         _new_captcha()
                     else:
-                        # Validate invite code BEFORE signup
+                        # Validate invite code BEFORE signup (read-only check)
                         code_ok, code_info = db.validate_invite_code(invite_code)
                         if not code_ok:
                             st.error(f"🎟️ {code_info}")
@@ -674,18 +688,29 @@ if not auth.is_logged_in():
                             target_plan = code_info  # "pro" / "team" / etc
                             ok, msg = auth.signup(email, password)
                             if ok:
-                                # Claim code + upgrade to Pro
                                 new_user = auth.get_user()
                                 if new_user:
-                                    db.claim_invite_code_and_upgrade(
+                                    # Auto-login path - claim immediately
+                                    ok2, info = db.claim_invite_code_and_upgrade(
                                         invite_code, new_user["id"], target_plan
                                     )
-                                    st.success(f"🎉 註冊成功！邀請碼已啟用 - 你而家係 {target_plan.upper()} 用戶")
-                                else:
-                                    st.success(msg + "\n\n登入後邀請碼會自動啟用。")
-                                _new_captcha()  # Refresh captcha
-                                if "正在登入" in msg or new_user:
+                                    if ok2:
+                                        st.success(f"🎉 註冊成功！邀請碼已啟用 - 你而家係 {info.upper()} 用戶")
+                                    else:
+                                        st.warning(f"註冊咗，但邀請碼啟用失敗：{info}")
+                                    _new_captcha()
                                     st.rerun()
+                                else:
+                                    # Email confirmation 開咗 - 唔可以即刻 claim
+                                    # 將 code 存喺 session_state，等用戶 verify email + login 之後 claim
+                                    st.session_state["_pending_invite_code"] = invite_code.strip()
+                                    st.session_state["_pending_invite_plan"] = target_plan
+                                    st.success(
+                                        msg + "\n\n"
+                                        "✅ 邀請碼已 reserved，"
+                                        f"verify email 之後喺呢個 browser 登入即升 {target_plan.upper()}。"
+                                    )
+                                    _new_captcha()
                             else:
                                 st.error(msg)
                                 _new_captcha()

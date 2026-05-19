@@ -260,24 +260,40 @@ def validate_invite_code(code: str) -> tuple[bool, str]:
         return False, f"驗證邀請碼失敗：{e}"
 
 
-def claim_invite_code_and_upgrade(code: str, user_id: str, target_plan: str = "pro") -> bool:
-    """Mark code as used and upgrade user to target plan."""
+def claim_invite_code_and_upgrade(code: str, user_id: str, target_plan: str = "pro") -> tuple[bool, str]:
+    """Atomically claim code + upgrade plan.
+    Returns (success, error_message).
+    Detects race condition: if code was claimed by someone else between validate and claim,
+    returns False without upgrading user_plans.
+    """
+    if not code or not code.strip():
+        return False, "邀請碼為空"
     sb = get_supabase()
     try:
-        # Mark code as used
-        sb.table("invite_codes").update({
-            "used_by_user_id": user_id,
-            "used_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("code", code.strip()).is_("used_by_user_id", "null").execute()
+        # Mark code as used - returns updated rows (empty if race lost)
+        claim_result = (
+            sb.table("invite_codes")
+            .update({
+                "used_by_user_id": user_id,
+                "used_at": datetime.now(timezone.utc).isoformat(),
+            })
+            .eq("code", code.strip())
+            .is_("used_by_user_id", "null")
+            .execute()
+        )
+        if not claim_result.data:
+            # Race lost - someone else claimed first OR code didn't exist
+            return False, "邀請碼已經被人用咗（race condition）"
 
-        # Upgrade user_plans
+        # Upgrade user_plans (trigger has already created the row at signup time)
         sb.table("user_plans").update({
             "plan": target_plan,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }).eq("user_id", user_id).execute()
         invalidate_user_cache()
-        return True
-    except Exception:
-        return False
+        return True, target_plan
+    except Exception as e:
+        return False, f"系統錯誤：{e}"
 
 
 def update_user_settings(user_id: str, **kwargs) -> None:
