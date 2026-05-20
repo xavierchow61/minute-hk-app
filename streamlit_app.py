@@ -1692,19 +1692,12 @@ with tab_history:
                                          use_container_width=True, help="⭐ Pro 功能"):
                                 show_pro_locked_toast("PDF 匯出")
 
-                    # 刪除 button - 獨立一行，避免誤撳
-                    _, col_del = st.columns([3, 1])
-                    with col_del:
-                        if st.button("🗑️ 刪除", key=f"del_{m['id']}", use_container_width=True):
-                            db.delete_meeting(m["id"], user["id"])
-                            st.rerun()
-
-                    # === 🤖 AI 進階分析（每個 meeting）===
+                    # === 🤖 AI 進階分析 ===
                     st.markdown("**🤖 AI 進階分析**")
-                    h_col_t, h_col_s = st.columns(2)
 
-                    # --- Translate (Free: 2 languages; Pro: all 6) ---
-                    with h_col_t:
+                    # 翻譯：dropdown + button 並排，視覺上 group together
+                    h_col_dd, h_col_tr = st.columns([2, 1])
+                    with h_col_dd:
                         if IS_PRO:
                             h_tr_options = list(ai.TRANSLATE_TARGETS.values())
                         else:
@@ -1716,8 +1709,9 @@ with tab_history:
                             label_visibility="collapsed",
                             help="⭐ Pro 用戶可揀 6 國語言" if not IS_PRO else None,
                         )
+                    with h_col_tr:
                         if st.button(
-                            "🌐 翻譯紀要",
+                            "🌐 翻譯",
                             key=f"h_btn_tr_{m['id']}",
                             use_container_width=True,
                         ):
@@ -1737,15 +1731,9 @@ with tab_history:
                             except Exception as e:
                                 st.error(f"翻譯失敗：{e}")
 
-                    # --- Sentiment (Pro only) ---
-                    with h_col_s:
-                        st.markdown(
-                            "<div style='height:38px;display:flex;align-items:center;"
-                            "color:#64748b;font-size:0.82rem;'>"
-                            "🎭 分析會議語氣 + 風險"
-                            "</div>",
-                            unsafe_allow_html=True,
-                        )
+                    # 🎭 語氣 / 🔗 繼續 / 🗑️ 刪除 - 一行 3 個 button
+                    h_a, h_b, h_c = st.columns([2, 2, 1])
+                    with h_a:
                         if IS_PRO:
                             if st.button(
                                 "🎭 語氣分析",
@@ -1769,6 +1757,31 @@ with tab_history:
                                 help="⭐ Pro 功能",
                             ):
                                 show_pro_locked_toast("語氣分析")
+                    with h_b:
+                        if IS_PRO:
+                            if st.button(
+                                "🔗 繼續會議",
+                                key=f"h_btn_cont_{m['id']}",
+                                use_container_width=True,
+                            ):
+                                st.session_state[f"h_cont_open_{m['id']}"] = True
+                        else:
+                            if st.button(
+                                "🔒 繼續會議",
+                                key=f"h_btn_cont_lk_{m['id']}",
+                                use_container_width=True,
+                                help="⭐ Pro 功能",
+                            ):
+                                show_pro_locked_toast("繼續會議")
+                    with h_c:
+                        if st.button(
+                            "🗑️ 刪除",
+                            key=f"del_{m['id']}",
+                            use_container_width=True,
+                            help="⚠️ 永久刪除呢個會議",
+                        ):
+                            db.delete_meeting(m["id"], user["id"])
+                            st.rerun()
 
                     # --- 顯示翻譯結果 ---
                     if st.session_state.get(f"h_tr_{m['id']}"):
@@ -1796,26 +1809,6 @@ with tab_history:
                                 mime="text/markdown",
                                 key=f"h_dl_sent_{m['id']}",
                             )
-
-                    # === 📅 Calendar export + 🔗 Continue meeting ===
-                    # === 🔗 繼續會議 ===
-                    _, h_col_cont_wrap = st.columns([2, 3])
-                    with h_col_cont_wrap:
-                        if IS_PRO:
-                            if st.button(
-                                "🔗 繼續呢個會議",
-                                key=f"h_btn_cont_{m['id']}",
-                                use_container_width=True,
-                            ):
-                                st.session_state[f"h_cont_open_{m['id']}"] = True
-                        else:
-                            if st.button(
-                                "🔒 繼續會議",
-                                key=f"h_btn_cont_lk_{m['id']}",
-                                use_container_width=True,
-                                help="⭐ Pro 功能",
-                            ):
-                                show_pro_locked_toast("繼續會議")
 
                     # Continue meeting UI
                     if st.session_state.get(f"h_cont_open_{m['id']}"):
