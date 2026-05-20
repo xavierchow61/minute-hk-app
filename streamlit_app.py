@@ -846,7 +846,8 @@ tab_new, tab_history, tab_dashboard, tab_settings = st.tabs([
 
 # ============ Tab 1: New Meeting ============
 with tab_new:
-    col1, col2, col3 = st.columns([2, 2, 1])
+    # 同 History tab 嘅 [3,1,1] 一致風格 - 客戶/項目大 input + 細 selector
+    col1, col2, col3 = st.columns([3, 3, 1])
     with col1:
         client_name = st.text_input("客戶", placeholder="ABC Limited",
                                     label_visibility="collapsed")
