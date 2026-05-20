@@ -1,12 +1,11 @@
 name: Keep Streamlit Alive
 
 # 防 Streamlit Cloud 免費 tier 嘅 app sleep
-# 每 8 分鐘 ping 一次 (Streamlit ~30 分鐘 idle 先會 sleep)
-# 確保用戶登入即時可用，唔需要等 cold start
+# 每 8 分鐘 ping 一次, 確保用戶登入即時可用
 on:
   schedule:
     - cron: '*/8 * * * *'   # 每 8 分鐘
-  workflow_dispatch:         # 容許手動 trigger（用嚟 test）
+  workflow_dispatch:         # 容許手動 trigger
 
 jobs:
   ping:
@@ -14,24 +13,50 @@ jobs:
     timeout-minutes: 3
 
     steps:
-      - name: Ping Minute.hk
+      - name: Ping Minute.hk (wake container)
         run: |
-          echo "🏓 Pinging Minute.hk to prevent sleep at $(date -u)"
+          set +e   # 唔好遇到 error 就 abort
+          URL="https://minute-hk-app.streamlit.app/_stcore/health"
+          MAIN="https://minute-hk-app.streamlit.app/"
 
-          # 優先打 Streamlit 內建 health endpoint (快 + 輕量)
-          # 失敗 fallback 打主頁
-          if curl -fsSL --max-time 90 \
-              -A "GitHub-Actions-Keepalive/1.0" \
-              "https://minute-hk-app.streamlit.app/_stcore/health" \
-              -o /tmp/health.txt 2>&1; then
-            echo "✅ Health check OK: $(cat /tmp/health.txt)"
-          else
-            echo "⚠️ Health endpoint failed, fallback to main URL..."
-            curl -fsSL --max-time 90 \
-              -A "GitHub-Actions-Keepalive/1.0" \
-              "https://minute-hk-app.streamlit.app/" \
-              -o /dev/null
-            echo "✅ Main URL OK"
-          fi
+          echo "🏓 Ping Minute.hk at $(date -u)"
 
-          echo "🎉 Keep-alive ping completed at $(date -u)"
+          # 用 Python 處理 redirect / cookie / timeout
+          # 任何 status code (200, 302, 503) 都算 OK - 重點係觸發 container wake-up
+          python3 <<'PYEOF'
+          import urllib.request, urllib.error, socket, ssl, sys
+
+          urls = [
+              "https://minute-hk-app.streamlit.app/_stcore/health",
+              "https://minute-hk-app.streamlit.app/",
+          ]
+          ctx = ssl.create_default_context()
+          ok = False
+          for url in urls:
+              try:
+                  req = urllib.request.Request(
+                      url,
+                      headers={"User-Agent": "Mozilla/5.0 (compatible; GH-Actions-Keepalive)"}
+                  )
+                  # 唔 follow redirect, 只 send request 就夠 wake container
+                  opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
+                  with urllib.request.urlopen(req, timeout=60, context=ctx) as resp:
+                      code = resp.status
+                      print(f"✅ {url} -> HTTP {code}")
+                      ok = True
+                      break
+              except urllib.error.HTTPError as e:
+                  # 4xx / 5xx 都算 success - container 收到 request
+                  print(f"⚠️ {url} -> HTTPError {e.code} (still counts as ping)")
+                  ok = True
+                  break
+              except (urllib.error.URLError, socket.timeout, TimeoutError) as e:
+                  print(f"⏱️ {url} timeout/url-error: {e}")
+              except Exception as e:
+                  print(f"❌ {url} unexpected: {type(e).__name__}: {e}")
+
+          if not ok:
+              print("⚠️ All pings failed but workflow returns 0 (best-effort)")
+          print(f"🎉 Done at $(date -u)")
+          PYEOF
+          exit 0  # 永遠 exit 0 - 避免 GitHub Actions 標紅 red, keep-alive 屬 best-effort
