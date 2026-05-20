@@ -420,11 +420,15 @@ st.markdown("""
     }
 
     /* ============ Reduce fade during reruns / tab switch ============ */
-    /* Streamlit 預設會 fade 緊個 page 等 user 知道 reload 緊
-       我哋將 fade 變少 (opacity 0.5 → 0.9) 等 UX 更 snappy */
-    .stApp [data-stale="true"] { opacity: 0.95 !important; }
+    /* Stale (重 render 緊) 狀態 opacity 0.5 - 用戶清楚知道係過渡，
+       唔好太接近 1.0 否則新舊內容混合睇落似 duplicate */
+    .stApp [data-stale="true"] { opacity: 0.5 !important; }
     div[data-testid="stAppViewContainer"] [data-stale="true"] {
-        opacity: 0.95 !important;
+        opacity: 0.5 !important;
+    }
+    /* 同時加 transition 令過渡 smooth 啲 */
+    .stApp [data-stale] {
+        transition: opacity 0.15s ease-out;
     }
     /* 隱藏右上角 running indicator (running man) */
     [data-testid="stStatusWidget"] { display: none !important; }
@@ -1288,7 +1292,12 @@ with tab_new:
 
     _render_summary_edit_main()
 
-    if st.session_state.get("last_summary"):
+    # 用 fragment wrap 整個下載 + AI 分析 section
+    # 撳翻譯 / 語氣 / PPT / Calendar button 只 rerun 呢度，唔會 reload 整頁
+    @st.fragment
+    def _render_post_summary_section():
+        if not st.session_state.get("last_summary"):
+            return
 
         st.markdown("##### 📥 下載")
         col_md, col_word, col_pdf, col_ppt, col_ics = st.columns(5)
@@ -1530,6 +1539,9 @@ with tab_new:
                     mime="text/markdown",
                     key="dl_sentiment",
                 )
+
+    # Call the post-summary fragment
+    _render_post_summary_section()
 
 # ============ Tab 2: History (with Search + Date Filter) ============
 with tab_history:
