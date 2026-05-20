@@ -345,6 +345,91 @@ def process_audio(audio_bytes: bytes, mime_type: str,
 
 
 # ============================================================
+# 📋 純轉文字 (Transcription only, no analysis)
+# ============================================================
+TRANSCRIBE_ONLY_PROMPT = """請將呢段錄音逐字 transcribe 成文字稿。
+
+要求：
+1. **繁體中文**輸出（簡體 → 繁體）
+2. **保留原話**：唔好總結、唔好修飾、唔好刪減、唔好加任何分析評論
+3. **中英夾雜照保留**（例：「我哋個 audit 已經 finalize 咗」唔好譯）
+4. **粵語口語照保留**（「嗰個」、「咁樣」、「點解」等）
+5. **講者標記**：如果分到唔同講者，用 `**A:**`、`**B:**` 等標記
+6. **時間戳**：每隔 1-2 分鐘加 `[mm:ss]` (可選，識別到先加)
+7. **段落分明**：每段對話 / 主題開新一段
+8. **保留語氣詞**：「啊」「呢」「囉」、笑聲「(笑)」、停頓「(停頓)」等
+9. **聽唔清嘅地方**：用 `[聽唔清]` 標記
+
+⚠️ 唔好做嘅嘢：
+- ❌ 唔好寫「會議重點」、「Action Items」等 summary 結構
+- ❌ 唔好總結
+- ❌ 唔好加 markdown headings 例如 「## 主要議題」
+- ❌ 唔好加 「由 AI 自動生成」之類嘅 footer
+
+只係**純粹轉錄文字**，咁就完。"""
+
+
+def transcribe_only(audio_bytes: bytes, mime_type: str) -> dict:
+    """Transcribe audio to text WITHOUT any analysis/summary.
+
+    Returns: {"transcript": text, "model": ..., "method": ...}
+    """
+    client = _client()
+    prompt = TRANSCRIBE_ONLY_PROMPT
+
+    # === 小檔案：inline data ===
+    if len(audio_bytes) <= INLINE_MAX_BYTES:
+        def _gen_inline(model=GEMINI_MODEL):
+            return client.models.generate_content(
+                model=model,
+                contents=[
+                    prompt,
+                    types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+                ],
+                config=types.GenerateContentConfig(
+                    temperature=0.1,  # 低溫度 - 唔好「創作」, 要忠實
+                    max_output_tokens=8192,
+                ),
+            )
+        response = call_with_retry(_gen_inline, model=GEMINI_MODEL)
+        return {"transcript": response.text, "model": GEMINI_MODEL, "method": "inline"}
+
+    # === 大檔案：Files API upload ===
+    ext = _ext_from_mime(mime_type)
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        tmp.write(audio_bytes)
+        tmp_path = Path(tmp.name)
+
+    try:
+        audio_file = client.files.upload(file=str(tmp_path))
+        for _ in range(60):
+            if hasattr(audio_file, "state") and getattr(audio_file.state, "name", "") == "ACTIVE":
+                break
+            time.sleep(1)
+            audio_file = client.files.get(name=audio_file.name)
+
+        def _gen_files(model=GEMINI_MODEL):
+            return client.models.generate_content(
+                model=model,
+                contents=[prompt, audio_file],
+                config=types.GenerateContentConfig(
+                    temperature=0.1,
+                    max_output_tokens=8192,
+                ),
+            )
+        response = call_with_retry(_gen_files, model=GEMINI_MODEL)
+
+        try:
+            client.files.delete(name=audio_file.name)
+        except Exception:
+            pass
+
+        return {"transcript": response.text, "model": GEMINI_MODEL, "method": "files_api"}
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+# ============================================================
 # 🌐 翻譯 (Translation)
 # ============================================================
 TRANSLATE_PROMPT = """請將以下會議紀要翻譯成 {target_name}。

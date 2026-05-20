@@ -1061,6 +1061,18 @@ with tab_new:
                 help="⭐ Pro 用戶可揀短/中/長",
             )
 
+    # 處理模式：完整摘要 vs 純轉文字
+    process_mode = st.radio(
+        "處理模式",
+        options=["📝 完整摘要 + AI 分析", "📋 純轉文字（快速 · 唔做分析）"],
+        index=0,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="process_mode",
+        help="純轉文字：只 transcribe 錄音內容，唔做總結 / action items / 分析",
+    )
+    transcribe_only_mode = process_mode.startswith("📋")
+
     # 兩個 input 方法 tabs
     in_tab_upload, in_tab_record = st.tabs(["📁 上傳檔案", "🎙️ 直接錄音"])
 
@@ -1102,71 +1114,116 @@ with tab_new:
         if not can_process_now:
             st.error(msg)
         else:
-            if st.button("🚀 開始 AI 處理", type="primary", use_container_width=True):
+            btn_label = "📋 開始純轉文字" if transcribe_only_mode else "🚀 開始 AI 處理"
+            if st.button(btn_label, type="primary", use_container_width=True):
                 try:
                     mime_type = uploaded.type or "audio/mpeg"
                     audio_bytes = uploaded.read()
 
-                    # 估計處理時間: ~12s per MB (Gemini benchmark)
-                    estimated = max(15, int(file_size_mb * 12))
-                    result = run_with_progress(
-                        ai.process_audio,
-                        audio_bytes=audio_bytes,
-                        mime_type=mime_type,
-                        client_name=client_name,
-                        project_name=project_name,
-                        industry=user_settings.get("industry", "generic"),
-                        length=summary_length,
-                        custom_jargon=user_settings.get("jargon", ""),
-                        company_name=user_settings.get("company_name", ""),
-                        estimated_seconds=estimated,
-                        label="🤖 AI 處理音頻",
-                    )
-
-                    with st.status("✅ AI 完成 - 儲存中...", expanded=False) as status:
-
-                        # 🚨 Quality check：偵測 AI hallucinate（重複字 garbage）
-                        if is_garbage_output(result["summary"]):
-                            st.warning(
-                                "⚠️ **偵測到錄音質量問題**\n\n"
-                                "AI 嘅輸出係重複字符（譬如「喂喂喂...」），"
-                                "通常代表：\n"
-                                "- 麥克風收唔到聲音\n"
-                                "- 背景噪音太大 / 講者聲音太細\n"
-                                "- 錄音太短\n\n"
-                                "**呢次冇 save 落資料庫**。請：\n"
-                                "1. 確保麥克風正常\n"
-                                "2. 安靜環境重新錄音\n"
-                                "3. 至少錄 15 秒，講大聲清楚"
-                            )
-                            status.update(label="⚠️ 質量問題", state="error")
-                            st.stop()
-
-                        st.write("✅ AI 整理完成")
-                        st.write("💾 儲存到資料庫...")
-                        saved = db.save_meeting(
-                            user_id=user["id"],
-                            summary=result["summary"],
-                            client=client_name or None,
-                            project=project_name or None,
-                            duration_seconds=est_duration_sec,
-                            audio_filename=uploaded.name,
+                    if transcribe_only_mode:
+                        # === 純轉文字 mode (快約 50% - 唔做 summary) ===
+                        estimated = max(10, int(file_size_mb * 8))
+                        tr_result = run_with_progress(
+                            ai.transcribe_only,
+                            audio_bytes=audio_bytes,
+                            mime_type=mime_type,
+                            estimated_seconds=estimated,
+                            label="📋 轉文字",
                         )
-                        # Track meeting_id 俾 edit feature
-                        if saved and saved.get("id"):
-                            st.session_state.current_meeting_id = saved["id"]
-                        st.write("✅ 已儲存")
-                        status.update(label="✅ 完成！", state="complete")
+                        transcript_text = tr_result["transcript"]
 
-                        st.session_state.last_summary = result["summary"]
-                        st.session_state.last_meeting_name = client_name or "會議"
-                        # 新 meeting → reset 之前嘅 cache
+                        # 包裝成 markdown 顯示（前綴 header 標明係純轉文字）
+                        summary_md = (
+                            "# 📋 純文字稿\n\n"
+                            f"**錄音**：{uploaded.name} · "
+                            f"**模式**：純轉文字（無分析）\n\n"
+                            "---\n\n"
+                            f"{transcript_text}"
+                        )
+
+                        with st.status("✅ 轉文字完成 - 儲存中...", expanded=False) as status:
+                            if is_garbage_output(transcript_text):
+                                st.warning(
+                                    "⚠️ **錄音質量問題** - AI 輸出重複字符。"
+                                    "請確保麥克風正常 + 安靜環境重錄。"
+                                )
+                                status.update(label="⚠️ 質量問題", state="error")
+                                st.stop()
+                            saved = db.save_meeting(
+                                user_id=user["id"],
+                                summary=summary_md,
+                                transcript=transcript_text,
+                                client=client_name or None,
+                                project=project_name or None,
+                                duration_seconds=est_duration_sec,
+                                audio_filename=uploaded.name,
+                            )
+                            if saved and saved.get("id"):
+                                st.session_state.current_meeting_id = saved["id"]
+                            status.update(label="✅ 完成！", state="complete")
+
+                        st.session_state.last_summary = summary_md
+                        st.session_state.last_meeting_name = client_name or "純轉文字"
                         st.session_state.pop("last_translation", None)
                         st.session_state.pop("last_translation_lang", None)
                         st.session_state.pop("last_sentiment", None)
                         st.session_state.pop("pptx_main", None)
                         st.session_state.pop("edit_main_mode", None)
                         st.session_state.pop("edit_main_buffer", None)
+
+                    else:
+                        # === 完整摘要 + AI 分析 mode ===
+                        estimated = max(15, int(file_size_mb * 12))
+                        result = run_with_progress(
+                            ai.process_audio,
+                            audio_bytes=audio_bytes,
+                            mime_type=mime_type,
+                            client_name=client_name,
+                            project_name=project_name,
+                            industry=user_settings.get("industry", "generic"),
+                            length=summary_length,
+                            custom_jargon=user_settings.get("jargon", ""),
+                            company_name=user_settings.get("company_name", ""),
+                            estimated_seconds=estimated,
+                            label="🤖 AI 處理音頻",
+                        )
+
+                        with st.status("✅ AI 完成 - 儲存中...", expanded=False) as status:
+                            if is_garbage_output(result["summary"]):
+                                st.warning(
+                                    "⚠️ **偵測到錄音質量問題**\n\n"
+                                    "AI 嘅輸出係重複字符（譬如「喂喂喂...」），通常代表：\n"
+                                    "- 麥克風收唔到聲音\n"
+                                    "- 背景噪音太大 / 講者聲音太細\n"
+                                    "- 錄音太短\n\n"
+                                    "**呢次冇 save 落資料庫**。請：\n"
+                                    "1. 確保麥克風正常\n"
+                                    "2. 安靜環境重新錄音\n"
+                                    "3. 至少錄 15 秒，講大聲清楚"
+                                )
+                                status.update(label="⚠️ 質量問題", state="error")
+                                st.stop()
+
+                            saved = db.save_meeting(
+                                user_id=user["id"],
+                                summary=result["summary"],
+                                client=client_name or None,
+                                project=project_name or None,
+                                duration_seconds=est_duration_sec,
+                                audio_filename=uploaded.name,
+                            )
+                            if saved and saved.get("id"):
+                                st.session_state.current_meeting_id = saved["id"]
+                            status.update(label="✅ 完成！", state="complete")
+
+                            st.session_state.last_summary = result["summary"]
+                            st.session_state.last_meeting_name = client_name or "會議"
+                            st.session_state.pop("last_translation", None)
+                            st.session_state.pop("last_translation_lang", None)
+                            st.session_state.pop("last_sentiment", None)
+                            st.session_state.pop("pptx_main", None)
+                            st.session_state.pop("edit_main_mode", None)
+                            st.session_state.pop("edit_main_buffer", None)
 
                 except Exception as e:
                     show_friendly_error(e, "AI 處理")
