@@ -1,5 +1,7 @@
 """Minute.hk Cloud Web App - Streamlit + Supabase + Gemini + Stripe"""
 import random
+import threading
+import time
 import streamlit as st
 
 import ai
@@ -78,6 +80,73 @@ def show_friendly_error(e: Exception, context: str = "處理"):
         if len(err_msg) > 300:
             err_msg = err_msg[:300] + "..."
         st.error(f"❌ {context}失敗：{err_msg}")
+
+
+def run_with_progress(func, *args, estimated_seconds: float = 30,
+                       label: str = "處理中", **kwargs):
+    """Run blocking func in thread + show animated % progress bar.
+
+    Bar smoothly climbs to 95% based on elapsed/estimated, then 100% on completion.
+    Gemini API 冇 real progress callback, 所以 % 係 fake-but-realistic estimation.
+
+    Args:
+        func: 要 run 嘅 function（例如 ai.process_audio）
+        *args / **kwargs: 傳俾 func 嘅參數
+        estimated_seconds: 估計需時 (用嚟 calibrate 進度)
+        label: Progress bar 嘅文字
+
+    Returns: func 嘅 return value
+    Raises: func 拋出嘅 exception (re-raised on main thread)
+    """
+    # Streamlit thread context (令 thread 內可以讀 st.secrets)
+    try:
+        from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
+        ctx = get_script_run_ctx()
+    except Exception:
+        ctx = None
+
+    holder = {"result": None, "error": None, "done": False}
+
+    def worker():
+        try:
+            holder["result"] = func(*args, **kwargs)
+        except Exception as e:
+            holder["error"] = e
+        finally:
+            holder["done"] = True
+
+    thread = threading.Thread(target=worker, daemon=True)
+    if ctx is not None:
+        add_script_run_ctx(thread, ctx)
+    thread.start()
+
+    placeholder = st.empty()
+    start = time.time()
+
+    while not holder["done"]:
+        elapsed = time.time() - start
+        # Ease-out curve: 快爬到 70%, 慢慢爬到 95%, 永遠唔 hit 100% 直到 done
+        ratio = elapsed / max(estimated_seconds, 1)
+        if ratio <= 1.0:
+            pct = ratio * 0.85  # 0 → 85% linearly during estimated time
+        else:
+            # 超時：85% → 95% asymptotically over additional time
+            extra = ratio - 1.0
+            pct = 0.85 + (0.95 - 0.85) * (1 - 0.5 ** extra)
+        pct = min(0.95, pct)
+        placeholder.progress(
+            pct,
+            text=f"{label} · {int(pct * 100)}% · 已用 {int(elapsed)}s（預計 {int(estimated_seconds)}s）",
+        )
+        time.sleep(0.4)
+
+    placeholder.progress(1.0, text=f"✅ {label} · 100%")
+    time.sleep(0.3)
+    placeholder.empty()
+
+    if holder["error"]:
+        raise holder["error"]
+    return holder["result"]
 
 
 def _new_captcha():
@@ -925,22 +994,27 @@ with tab_new:
             st.error(msg)
         else:
             if st.button("🚀 開始 AI 處理", type="primary", use_container_width=True):
-                with st.status("🤖 AI 處理中...", expanded=True) as status:
-                    try:
-                        mime_type = uploaded.type or "audio/mpeg"
-                        audio_bytes = uploaded.read()
-                        st.write("🎯 上傳到 Gemini...")
+                try:
+                    mime_type = uploaded.type or "audio/mpeg"
+                    audio_bytes = uploaded.read()
 
-                        result = ai.process_audio(
-                            audio_bytes=audio_bytes,
-                            mime_type=mime_type,
-                            client_name=client_name,
-                            project_name=project_name,
-                            industry=user_settings.get("industry", "generic"),
-                            length=summary_length,
-                            custom_jargon=user_settings.get("jargon", ""),
-                            company_name=user_settings.get("company_name", ""),
-                        )
+                    # 估計處理時間: ~12s per MB (Gemini benchmark)
+                    estimated = max(15, int(file_size_mb * 12))
+                    result = run_with_progress(
+                        ai.process_audio,
+                        audio_bytes=audio_bytes,
+                        mime_type=mime_type,
+                        client_name=client_name,
+                        project_name=project_name,
+                        industry=user_settings.get("industry", "generic"),
+                        length=summary_length,
+                        custom_jargon=user_settings.get("jargon", ""),
+                        company_name=user_settings.get("company_name", ""),
+                        estimated_seconds=estimated,
+                        label="🤖 AI 處理音頻",
+                    )
+
+                    with st.status("✅ AI 完成 - 儲存中...", expanded=False) as status:
 
                         # 🚨 Quality check：偵測 AI hallucinate（重複字 garbage）
                         if is_garbage_output(result["summary"]):
@@ -985,10 +1059,10 @@ with tab_new:
                         st.session_state.pop("edit_main_mode", None)
                         st.session_state.pop("edit_main_buffer", None)
 
-                    except Exception as e:
-                        show_friendly_error(e, "AI 處理")
-                        with st.expander("🔍 技術詳情"):
-                            st.exception(e)
+                except Exception as e:
+                    show_friendly_error(e, "AI 處理")
+                    with st.expander("🔍 技術詳情"):
+                        st.exception(e)
 
     # 顯示最後一次嘅 summary - 用 @st.fragment 等 edit/save 只 rerun 呢一 block
     @st.fragment
