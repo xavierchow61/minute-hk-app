@@ -1186,22 +1186,21 @@ with tab_new:
         # ============ Process AFTER columns（避免 duplicate row）============
         # PPT 生成
         if st.session_state.pop("_gen_pptx_main", False):
-            with st.status("📊 AI 結構化 + 生成 PPT...", expanded=True) as s:
-                try:
-                    st.write("🧠 Gemini 結構化 (5-10s)...")
-                    import cloud_pptx
-                    pptx_bytes = cloud_pptx.summary_to_pptx_bytes(st.session_state.last_summary)
-                    st.session_state.pptx_main = pptx_bytes
-                    st.write("✅ PPT 生成完成")
-                    s.update(label="✅ PPT 已生成 - 撳下面 download", state="complete")
-                except ImportError:
-                    s.update(label="⚠️ PPT module 仲未 ready", state="error")
-                    st.error("Streamlit Cloud 仲喺度裝 python-pptx (5-10 分鐘)。")
-                except Exception as e:
-                    s.update(label=f"❌ PPT 失敗", state="error")
-                    st.error(f"{e}")
-                    with st.expander("🔍 技術詳情"):
-                        st.exception(e)
+            try:
+                import cloud_pptx
+                pptx_bytes = run_with_progress(
+                    cloud_pptx.summary_to_pptx_bytes, st.session_state.last_summary,
+                    estimated_seconds=15,
+                    label="📊 AI 結構化 + 生成 PPT",
+                )
+                st.session_state.pptx_main = pptx_bytes
+                st.toast("✅ PPT 已生成 - 撳下面 download", icon="📊")
+            except ImportError:
+                st.error("⚠️ Streamlit Cloud 仲喺度裝 python-pptx (5-10 分鐘)。")
+            except Exception as e:
+                st.error(f"❌ PPT 失敗：{e}")
+                with st.expander("🔍 技術詳情"):
+                    st.exception(e)
 
         if st.session_state.get("pptx_main"):
             st.download_button(
@@ -1215,25 +1214,24 @@ with tab_new:
 
         # Calendar 抽 action items
         if st.session_state.pop("_gen_ics_main", False):
-            with st.status("📅 AI 抽取 action items...", expanded=True) as s:
-                try:
-                    st.write("🧠 Gemini 分析中 (5-10s)...")
-                    items = ai.extract_action_items(st.session_state.last_summary)
-                    if not items:
-                        s.update(label="⚠️ 冇 action items", state="error")
-                        st.warning("呢個 meeting 冇可以加入 calendar 嘅事項")
-                    else:
-                        st.session_state.cal_items_main = items
-                        st.session_state.ics_main = cloud_calendar.action_items_to_ics(
-                            items,
-                            meeting_title=base_name,
-                            client=st.session_state.get("last_meeting_name", ""),
-                        )
-                        st.write(f"✅ 揾到 {len(items)} 個事項")
-                        s.update(label=f"✅ {len(items)} 個 action items", state="complete")
-                except Exception as e:
-                    s.update(label="❌ 抽取失敗", state="error")
-                    show_friendly_error(e, "Action items 抽取")
+            try:
+                items = run_with_progress(
+                    ai.extract_action_items, st.session_state.last_summary,
+                    estimated_seconds=10,
+                    label="📅 AI 抽取 action items",
+                )
+                if not items:
+                    st.warning("呢個 meeting 冇可以加入 calendar 嘅事項")
+                else:
+                    st.session_state.cal_items_main = items
+                    st.session_state.ics_main = cloud_calendar.action_items_to_ics(
+                        items,
+                        meeting_title=base_name,
+                        client=st.session_state.get("last_meeting_name", ""),
+                    )
+                    st.toast(f"✅ 揾到 {len(items)} 個 action items", icon="📅")
+            except Exception as e:
+                show_friendly_error(e, "Action items 抽取")
 
         # 顯示 calendar 選項（per action item）
         if st.session_state.get("cal_items_main"):
@@ -1308,13 +1306,16 @@ with tab_new:
                     (k for k, v in ai.TRANSLATE_TARGETS.items() if v == target_label),
                     "en"
                 )
-                with st.spinner(f"翻譯成 {target_label}..."):
-                    try:
-                        translated = ai.translate(st.session_state.last_summary, target_code)
-                        st.session_state.last_translation = translated
-                        st.session_state.last_translation_lang = target_label
-                    except Exception as e:
-                        st.error(f"翻譯失敗：{e}")
+                try:
+                    translated = run_with_progress(
+                        ai.translate, st.session_state.last_summary, target_code,
+                        estimated_seconds=10,
+                        label=f"🌐 翻譯成 {target_label}",
+                    )
+                    st.session_state.last_translation = translated
+                    st.session_state.last_translation_lang = target_label
+                except Exception as e:
+                    st.error(f"翻譯失敗：{e}")
 
         # --- Sentiment (Pro only) ---
         with col_s:
@@ -1326,12 +1327,15 @@ with tab_new:
             )
             if IS_PRO:
                 if st.button("🎭 語氣分析", use_container_width=True, key="btn_sentiment"):
-                    with st.spinner("AI 分析中..."):
-                        try:
-                            sentiment = ai.analyze_sentiment(st.session_state.last_summary)
-                            st.session_state.last_sentiment = sentiment
-                        except Exception as e:
-                            st.error(f"分析失敗：{e}")
+                    try:
+                        sentiment = run_with_progress(
+                            ai.analyze_sentiment, st.session_state.last_summary,
+                            estimated_seconds=10,
+                            label="🎭 AI 分析語氣 + 風險",
+                        )
+                        st.session_state.last_sentiment = sentiment
+                    except Exception as e:
+                        st.error(f"分析失敗：{e}")
             else:
                 if st.button("🔒 語氣分析", use_container_width=True, key="btn_sentiment_locked",
                              help="⭐ 升級 Pro 解鎖"):
@@ -1563,18 +1567,19 @@ with tab_history:
 
                     # PPT generation (after all columns - avoid duplicate row)
                     if st.session_state.pop(f"_h_gen_pptx_{m['id']}", False):
-                        with st.status("📊 AI 生成 PPT...", expanded=True) as s:
-                            try:
-                                import cloud_pptx
-                                pptx_bytes = cloud_pptx.summary_to_pptx_bytes(full["summary"])
-                                st.session_state[f"h_pptx_{m['id']}"] = pptx_bytes
-                                s.update(label="✅ PPT 已生成", state="complete")
-                            except ImportError:
-                                s.update(label="⚠️ Module 未 ready", state="error")
-                                st.error("python-pptx 仲安裝中，請等 5 分鐘")
-                            except Exception as e:
-                                s.update(label="❌ 失敗", state="error")
-                                st.error(f"{e}")
+                        try:
+                            import cloud_pptx
+                            pptx_bytes = run_with_progress(
+                                cloud_pptx.summary_to_pptx_bytes, full["summary"],
+                                estimated_seconds=15,
+                                label="📊 AI 生成 PPT",
+                            )
+                            st.session_state[f"h_pptx_{m['id']}"] = pptx_bytes
+                            st.toast("✅ PPT 已生成", icon="📊")
+                        except ImportError:
+                            st.error("python-pptx 仲安裝中，請等 5 分鐘")
+                        except Exception as e:
+                            st.error(f"❌ {e}")
 
                     # PPT download button
                     if st.session_state.get(f"h_pptx_{m['id']}"):
@@ -1614,13 +1619,16 @@ with tab_history:
                                  if v == target_label),
                                 "en",
                             )
-                            with st.spinner(f"翻譯成 {target_label}..."):
-                                try:
-                                    translated = ai.translate(full["summary"], target_code)
-                                    st.session_state[f"h_tr_{m['id']}"] = translated
-                                    st.session_state[f"h_tr_lang_{m['id']}"] = target_label
-                                except Exception as e:
-                                    st.error(f"翻譯失敗：{e}")
+                            try:
+                                translated = run_with_progress(
+                                    ai.translate, full["summary"], target_code,
+                                    estimated_seconds=10,
+                                    label=f"🌐 翻譯成 {target_label}",
+                                )
+                                st.session_state[f"h_tr_{m['id']}"] = translated
+                                st.session_state[f"h_tr_lang_{m['id']}"] = target_label
+                            except Exception as e:
+                                st.error(f"翻譯失敗：{e}")
 
                     # --- Sentiment (Pro only) ---
                     with h_col_s:
@@ -1637,12 +1645,15 @@ with tab_history:
                                 key=f"h_btn_sent_{m['id']}",
                                 use_container_width=True,
                             ):
-                                with st.spinner("分析中..."):
-                                    try:
-                                        sent = ai.analyze_sentiment(full["summary"])
-                                        st.session_state[f"h_sent_{m['id']}"] = sent
-                                    except Exception as e:
-                                        st.error(f"分析失敗：{e}")
+                                try:
+                                    sent = run_with_progress(
+                                        ai.analyze_sentiment, full["summary"],
+                                        estimated_seconds=10,
+                                        label="🎭 AI 分析語氣 + 風險",
+                                    )
+                                    st.session_state[f"h_sent_{m['id']}"] = sent
+                                except Exception as e:
+                                    st.error(f"分析失敗：{e}")
                         else:
                             if st.button(
                                 "🔒 語氣分析",
@@ -1689,21 +1700,24 @@ with tab_history:
                             key=f"h_btn_ics_{m['id']}",
                             use_container_width=True,
                         ):
-                            with st.spinner("AI 抽取 action items..."):
-                                try:
-                                    items = ai.extract_action_items(full["summary"])
-                                    if not items:
-                                        st.warning("冇 action items 可以加入")
-                                    else:
-                                        ics_b = cloud_calendar.action_items_to_ics(
-                                            items,
-                                            meeting_title=base_name,
-                                            client=client,
-                                        )
-                                        st.session_state[f"h_ics_{m['id']}"] = ics_b
-                                        st.session_state[f"h_ics_count_{m['id']}"] = len(items)
-                                except Exception as e:
-                                    st.error(f"失敗：{e}")
+                            try:
+                                items = run_with_progress(
+                                    ai.extract_action_items, full["summary"],
+                                    estimated_seconds=10,
+                                    label="📅 AI 抽取 action items",
+                                )
+                                if not items:
+                                    st.warning("冇 action items 可以加入")
+                                else:
+                                    ics_b = cloud_calendar.action_items_to_ics(
+                                        items,
+                                        meeting_title=base_name,
+                                        client=client,
+                                    )
+                                    st.session_state[f"h_ics_{m['id']}"] = ics_b
+                                    st.session_state[f"h_ics_count_{m['id']}"] = len(items)
+                            except Exception as e:
+                                st.error(f"失敗：{e}")
 
                     with h_col_cont:
                         if IS_PRO:
