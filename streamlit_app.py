@@ -442,6 +442,68 @@ st.markdown("""
     [data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
     .element-container { margin: 0 !important; padding: 0 !important; }
 
+    /* ============ 📱 Mobile contrast fix - 強制深色字 ============ */
+    /* 手機光線/小螢幕下，淺灰文字 (#71717a, #94a3b8 等) 對比唔夠，
+       全部 force 黑色 / 深灰 */
+    @media (max-width: 768px) {
+        /* Body text 預設黑色 */
+        .stMarkdown, .stMarkdown p, .stMarkdown span, .stMarkdown li,
+        .stMarkdown strong, .stMarkdown em, .stMarkdown div {
+            color: #000 !important;
+        }
+        /* Caption / 小灰字 → 深灰 (仍可分到 hierarchy) */
+        .stCaption, .stMarkdown small,
+        [data-testid="stCaptionContainer"],
+        [data-testid="stCaptionContainer"] p {
+            color: #334155 !important;
+        }
+        /* Form labels - placeholder, label, select */
+        .stTextInput label, .stSelectbox label, .stTextArea label,
+        .stDateInput label, .stFileUploader label, .stRadio label {
+            color: #000 !important;
+            font-weight: 600 !important;
+        }
+        .stTextInput input, .stTextArea textarea, .stSelectbox div,
+        .stDateInput input {
+            color: #000 !important;
+        }
+        /* Placeholder - 用深啲灰 */
+        .stTextInput input::placeholder, .stTextArea textarea::placeholder {
+            color: #475569 !important;
+            opacity: 1 !important;
+        }
+        /* Tabs - 未 selected 嘅都用深色 */
+        .stTabs [data-baseweb="tab"] {
+            color: #1e293b !important;
+            font-weight: 600 !important;
+        }
+        /* Metric labels (Dashboard 用) */
+        [data-testid="stMetricLabel"] {
+            color: #1e293b !important;
+            font-weight: 600 !important;
+        }
+        /* Expander titles (history meetings) */
+        [data-testid="stExpander"] summary,
+        [data-testid="stExpander"] details > summary {
+            color: #000 !important;
+            font-weight: 600 !important;
+        }
+        /* H5 (uppercase headings) - 由灰色 #71717a 改深灰 */
+        h5 { color: #334155 !important; }
+        /* Top bar email + usage 細字 */
+        [data-testid="stApp"] div[style*="color:#475569"],
+        [data-testid="stApp"] div[style*="color:#64748b"],
+        [data-testid="stApp"] div[style*="color:#94a3b8"] {
+            color: #1e293b !important;
+        }
+        /* Inline HTML 黑色 override - 任何 span/div with light gray inline color */
+        span[style*="#71717a"], span[style*="#94a3b8"], span[style*="#64748b"],
+        div[style*="color:#71717a"], div[style*="color:#94a3b8"],
+        p[style*="color:#94a3b8"] {
+            color: #1e293b !important;
+        }
+    }
+
     /* ============ Custom card classes ============ */
     .settings-card {
         background: white;
