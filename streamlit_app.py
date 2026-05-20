@@ -82,8 +82,24 @@ def show_friendly_error(e: Exception, context: str = "處理"):
         st.error(f"❌ {context}失敗：{err_msg}")
 
 
+def _log_activity(label: str, status: str, duration: float = None, detail: str = ""):
+    """Append entry to operation log (session_state).
+    status: "running" | "done" | "error"
+    """
+    log = st.session_state.setdefault("activity_log", [])
+    log.insert(0, {
+        "time": time.strftime("%H:%M:%S"),
+        "label": label,
+        "status": status,
+        "duration": duration,
+        "detail": (detail or "")[:120],
+    })
+    # 只保留最近 20 條
+    st.session_state["activity_log"] = log[:20]
+
+
 def run_with_progress(func, *args, estimated_seconds: float = 30,
-                       label: str = "處理中", **kwargs):
+                       label: str = "處理中", activity_detail: str = "", **kwargs):
     """Run blocking func in thread + show animated % progress bar.
 
     Bar smoothly climbs to 95% based on elapsed/estimated, then 100% on completion.
@@ -122,6 +138,7 @@ def run_with_progress(func, *args, estimated_seconds: float = 30,
 
     placeholder = st.empty()
     start = time.time()
+    _start_unix = start  # for duration calc
 
     while not holder["done"]:
         elapsed = time.time() - start
@@ -144,8 +161,12 @@ def run_with_progress(func, *args, estimated_seconds: float = 30,
     time.sleep(0.3)
     placeholder.empty()
 
+    duration = time.time() - _start_unix
     if holder["error"]:
+        _log_activity(label, "error", duration=duration,
+                      detail=f"{activity_detail} · {str(holder['error'])[:80]}".strip(" ·"))
         raise holder["error"]
+    _log_activity(label, "done", duration=duration, detail=activity_detail)
     return holder["result"]
 
 
@@ -768,7 +789,7 @@ with ubar_outer:
         'padding:0.4rem 1rem;margin-bottom:0.6rem;box-shadow:0 1px 2px rgba(0,0,0,0.03);">',
         unsafe_allow_html=True,
     )
-    col_left, col_mid, col_right, col_menu = st.columns([4, 3, 1.6, 0.9])
+    col_left, col_mid, col_log, col_right, col_menu = st.columns([4, 2.4, 0.7, 1.6, 0.9])
 
     with col_left:
         st.markdown(f"""
@@ -792,6 +813,32 @@ with ubar_outer:
             f'👋 {user["email"]}</div>',
             unsafe_allow_html=True,
         )
+
+    with col_log:
+        _alog = st.session_state.get("activity_log", [])
+        _badge = f" ({len(_alog)})" if _alog else ""
+        with st.popover(f"📋{_badge}", use_container_width=True, help="操作記錄"):
+            st.markdown("##### 📋 最近操作")
+            if not _alog:
+                st.caption("仲未做過任何 AI 操作")
+            else:
+                _status_emoji = {"running": "🟢", "done": "✅", "error": "❌"}
+                for entry in _alog:
+                    em = _status_emoji.get(entry["status"], "•")
+                    dur = entry.get("duration")
+                    dur_txt = f" · **{dur:.1f}s**" if dur else ""
+                    detail = entry.get("detail") or ""
+                    st.markdown(
+                        f"<div style='padding:4px 0;border-bottom:1px solid #f1f5f9;font-size:0.82rem;'>"
+                        f"{em} <span style='color:#64748b;'>{entry['time']}</span> "
+                        f"{entry['label']}{dur_txt}"
+                        + (f"<br><span style='color:#94a3b8;font-size:0.74rem;padding-left:1.4rem;'>{detail}</span>" if detail else "")
+                        + "</div>",
+                        unsafe_allow_html=True,
+                    )
+                if st.button("🗑️ 清空", key="clear_activity_log", use_container_width=True):
+                    st.session_state.pop("activity_log", None)
+                    st.rerun()
 
     with col_right:
         if plan == "free":
