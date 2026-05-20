@@ -859,13 +859,13 @@ with ubar_outer:
 
     with col_left:
         st.markdown(f"""
-        <div style="display:flex;align-items:center;gap:10px;padding-top:6px;">
-            <img src="{LOGO_DATA_URI}" alt="Minute.hk" style="width:32px;height:32px;flex-shrink:0;"/>
+        <div style="display:flex;align-items:center;gap:14px;padding-top:4px;">
+            <img src="{LOGO_DATA_URI}" alt="Minute.hk" style="width:46px;height:46px;flex-shrink:0;"/>
             <div>
-                <div style="font-size:1rem;font-weight:700;color:#18181b;line-height:1.2;">
+                <div style="font-size:1.35rem;font-weight:800;color:#18181b;line-height:1.1;">
                     Minute<span style="color:#06b6d4;">.hk</span>
                 </div>
-                <div style="font-size:0.72rem;color:#64748b;line-height:1.2;">
+                <div style="font-size:0.78rem;color:#64748b;line-height:1.3;">
                     📊 今日 <strong>{daily_used:.1f}/{daily_limit_str}</strong>分
                     · 本月 <strong>{monthly_used:.1f}/{monthly_limit_str}</strong>分
                 </div>
@@ -1233,14 +1233,16 @@ with tab_new:
                     with st.expander("🔍 技術詳情"):
                         st.exception(e)
 
-    # 顯示最後一次嘅 summary - 用 @st.fragment 等 edit/save 只 rerun 呢一 block
+    # 顯示 summary + 所有下游 UI - 用單一 @st.fragment 包住, 避免 download_button
+    # click 觸發 cross-fragment render 衝突 (之前出現雙重 "會議紀要" 嘅 bug)
     @st.fragment
-    def _render_summary_edit_main():
+    def _render_result_section():
         if not st.session_state.get("last_summary"):
             return
 
         st.divider()
 
+        # === 1. Summary + edit toggle ===
         header_col, edit_col = st.columns([5, 1])
         with header_col:
             st.markdown("#### 📝 會議紀要")
@@ -1289,16 +1291,7 @@ with tab_new:
         else:
             st.markdown(st.session_state.last_summary)
 
-    _render_summary_edit_main()
-
-    # 用 fragment wrap 整個下載 + AI 分析 section
-    # 撳翻譯 / 語氣 / PPT / Calendar button 只 rerun 呢度，唔會 reload 整頁
-    @st.fragment
-    def _render_post_summary_section():
-        if not st.session_state.get("last_summary"):
-            return
-
-        # 如果係純轉文字 mode 嘅 output，顯示「升級成完整摘要」button
+        # === 2. 純轉文字 → 升級成完整摘要 button (只當 summary 係純轉文字) ===
         _summary = st.session_state.get("last_summary", "")
         if _summary.startswith("# 📋 純文字稿"):
             up_l, up_r = st.columns([2, 3])
@@ -1472,8 +1465,7 @@ with tab_new:
                     key="dl_sentiment",
                 )
 
-    # Call the post-summary fragment
-    _render_post_summary_section()
+    _render_result_section()
 
 # ============ Tab 2: History (with Search + Date Filter) ============
 with tab_history:
