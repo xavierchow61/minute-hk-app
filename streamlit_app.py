@@ -1361,7 +1361,8 @@ with tab_history:
             title = f"📅 {date} · {client} / {project} · {duration_min:.1f} 分鐘"
 
             with st.expander(title):
-                full = db.get_meeting(m["id"], user["id"])
+                # m 已經由 list_meetings 帶埋 summary，唔需要再 fetch (省 50 個 query/rerun)
+                full = m
                 if full:
                     edit_key = f"h_edit_mode_{m['id']}"
                     buf_key = f"h_edit_buf_{m['id']}"
