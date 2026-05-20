@@ -259,6 +259,57 @@ def _ext_from_mime(mime_type: str) -> str:
     }.get(mime_type, ".bin")
 
 
+def summarize_transcript(transcript: str,
+                          client_name: str = "", project_name: str = "",
+                          industry: str = "generic", length: str = "medium",
+                          custom_jargon: str = "", company_name: str = "") -> dict:
+    """用已有嘅 transcript 做完整摘要 + AI 分析（唔需要 audio）.
+
+    Use case: 用戶上傳音頻用「純轉文字」mode → 得到逐字稿 → 升級成完整 summary.
+    比 process_audio 快 ~2x（純文字 input，唔需要 Files API upload）.
+
+    Returns: {"summary": markdown, "model": ..., "method": "text"}
+    """
+    client = _client()
+
+    client_info = ""
+    if client_name:
+        client_info += f"客戶 {client_name}"
+    if project_name:
+        client_info += f" / 項目 {project_name}" if client_info else f"項目 {project_name}"
+    if not client_info:
+        client_info = "—"
+
+    base_prompt = build_summary_prompt(
+        duration="（無錄音時長 - 由 transcript 摘要）",
+        client_info=client_info,
+        industry=industry,
+        length=length,
+        custom_jargon=custom_jargon,
+        company_name=company_name,
+    )
+
+    # Append transcript explicitly at end
+    full_prompt = (
+        base_prompt
+        + "\n\n=== 以下係已轉好嘅逐字稿（已 transcribe，唔需要再 transcribe）===\n\n"
+        + transcript
+        + "\n\n請根據以上逐字稿，跟返上面格式要求，輸出完整 markdown 紀要 + AI 分析。"
+    )
+
+    def _gen(model=GEMINI_MODEL):
+        return client.models.generate_content(
+            model=model,
+            contents=[full_prompt],
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=8192,
+            ),
+        )
+    response = call_with_retry(_gen, model=GEMINI_MODEL)
+    return {"summary": response.text, "model": GEMINI_MODEL, "method": "text"}
+
+
 def process_audio(audio_bytes: bytes, mime_type: str,
                   client_name: str = "", project_name: str = "",
                   industry: str = "generic", length: str = "medium",

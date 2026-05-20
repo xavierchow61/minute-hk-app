@@ -1299,6 +1299,53 @@ with tab_new:
         if not st.session_state.get("last_summary"):
             return
 
+        # 如果係純轉文字 mode 嘅 output，顯示「升級成完整摘要」button
+        _summary = st.session_state.get("last_summary", "")
+        if _summary.startswith("# 📋 純文字稿"):
+            up_l, up_r = st.columns([2, 3])
+            with up_r:
+                if st.button(
+                    "🤖 升級成完整摘要 + AI 分析",
+                    type="primary",
+                    use_container_width=True,
+                    help="用 AI 分析逐字稿，產生完整 markdown 紀要、action items、風險等"
+                ):
+                    # 抽出 transcript（去掉前面 markdown header）
+                    _transcript = _summary.split("---\n\n", 1)[-1].strip() if "---\n\n" in _summary else _summary
+                    try:
+                        upgraded = run_with_progress(
+                            ai.summarize_transcript,
+                            _transcript,
+                            client_name=st.session_state.get("last_meeting_name", ""),
+                            project_name="",
+                            industry=user_settings.get("industry", "generic"),
+                            length=user_settings.get("summary_length", "medium"),
+                            custom_jargon=user_settings.get("jargon", ""),
+                            company_name=user_settings.get("company_name", ""),
+                            estimated_seconds=12,
+                            label="🤖 AI 分析逐字稿",
+                        )
+                        new_summary = upgraded["summary"]
+                        # Update DB: 同 meeting_id 嘅 row update summary, 保留 transcript
+                        mid = st.session_state.get("current_meeting_id")
+                        if mid:
+                            db.update_meeting_summary(
+                                meeting_id=mid,
+                                user_id=user["id"],
+                                new_summary=new_summary,
+                                additional_duration=0,
+                            )
+                        st.session_state.last_summary = new_summary
+                        # Clear cached AI 分析 - 因為 summary 變咗
+                        st.session_state.pop("last_translation", None)
+                        st.session_state.pop("last_sentiment", None)
+                        st.session_state.pop("pptx_main", None)
+                        st.session_state.pop("cal_items_main", None)
+                        st.toast("✅ 已升級成完整摘要", icon="🤖")
+                        st.rerun(scope="fragment")
+                    except Exception as e:
+                        st.error(f"升級失敗：{e}")
+
         st.markdown("##### 📥 下載")
         col_md, col_word, col_pdf, col_ppt, col_ics = st.columns(5)
         base_name = st.session_state.get("last_meeting_name", "meeting").replace(" ", "_")
@@ -1680,6 +1727,48 @@ with tab_history:
                                     st.error(f"儲存失敗：{e}")
                     else:
                         st.markdown(full["summary"])
+
+                    # 如果係純轉文字 meeting，提供「升級成完整摘要」button
+                    if full["summary"].startswith("# 📋 純文字稿"):
+                        _up_l, _up_r = st.columns([2, 3])
+                        with _up_r:
+                            if st.button(
+                                "🤖 升級成完整摘要 + AI 分析",
+                                key=f"h_upgrade_{m['id']}",
+                                type="primary",
+                                use_container_width=True,
+                                help="用 AI 分析逐字稿，產生完整紀要、action items、風險等",
+                            ):
+                                _tr = full["summary"].split("---\n\n", 1)[-1].strip() \
+                                      if "---\n\n" in full["summary"] else full["summary"]
+                                try:
+                                    upgraded = run_with_progress(
+                                        ai.summarize_transcript,
+                                        _tr,
+                                        client_name=client,
+                                        project_name=project,
+                                        industry=user_settings.get("industry", "generic"),
+                                        length=user_settings.get("summary_length", "medium"),
+                                        custom_jargon=user_settings.get("jargon", ""),
+                                        company_name=user_settings.get("company_name", ""),
+                                        estimated_seconds=12,
+                                        label="🤖 AI 分析逐字稿",
+                                    )
+                                    db.update_meeting_summary(
+                                        meeting_id=m["id"],
+                                        user_id=user["id"],
+                                        new_summary=upgraded["summary"],
+                                        additional_duration=0,
+                                    )
+                                    m["summary"] = upgraded["summary"]
+                                    # Clear cached AI 結果
+                                    for k in [f"h_tr_{m['id']}", f"h_sent_{m['id']}",
+                                              f"h_pptx_{m['id']}", f"h_ics_{m['id']}"]:
+                                        st.session_state.pop(k, None)
+                                    st.toast("✅ 已升級成完整摘要", icon="🤖")
+                                    st.rerun(scope="fragment")
+                                except Exception as e:
+                                    st.error(f"升級失敗：{e}")
 
                     # 4-column download row (mobile-safe: avoids auto-wrap)
                     col_md, col_word, col_pdf, col_ppt = st.columns(4)
