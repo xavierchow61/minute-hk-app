@@ -924,10 +924,9 @@ with ubar_outer:
                     "**進階 AI**  \n"
                     "✓ 🎭 語氣分析  \n"
                     "✓ 🌐 6 國語言翻譯（Free: 英/簡中）  \n"
-                    "✓ 📊 PPT 生成 + PDF 匯出  \n"
+                    "✓ 📕 PDF 匯出  \n"
                     "✓ 🔗 繼續會議（AI 合併）  \n\n"
                     "**整合**  \n"
-                    "✓ 📅 Google Calendar / Outlook 一鍵 add  \n"
                     "✓ 🗂️ Industry-specific prompts  \n"
                     "✓ 🏷️ 自定 jargon dictionary  \n"
                     "✓ 📈 Dashboard + 詞雲  \n"
@@ -1347,7 +1346,7 @@ with tab_new:
                         st.error(f"升級失敗：{e}")
 
         st.markdown("##### 📥 下載")
-        col_md, col_word, col_pdf, col_ppt, col_ics = st.columns(5)
+        col_md, col_word, col_pdf = st.columns(3)
         base_name = st.session_state.get("last_meeting_name", "meeting").replace(" ", "_")
 
         with col_md:
@@ -1389,120 +1388,6 @@ with tab_new:
                 if st.button("🔒 PDF", use_container_width=True, key="pdf_locked_main",
                              help="⭐ 升級 Pro 解鎖 PDF 匯出"):
                     show_pro_locked_toast("PDF 匯出")
-
-        with col_ppt:
-            if IS_PRO:
-                if st.button("📊 PPT", use_container_width=True, key="ppt_main"):
-                    st.session_state._gen_pptx_main = True
-                    st.toast("📊 AI 生成 PPT 中... (約 10-20 秒)", icon="🤖")
-            else:
-                if st.button("🔒 PPT", use_container_width=True, key="ppt_locked_main",
-                             help="⭐ 升級 Pro 解鎖 PPT 生成"):
-                    show_pro_locked_toast("PPT 生成")
-
-        with col_ics:
-            if st.button("📅 加 Calendar", use_container_width=True, key="ics_main"):
-                st.session_state._gen_ics_main = True
-                st.toast("📅 AI 抽取 action items 中... (約 5-10 秒)", icon="🤖")
-
-        # ============ Process AFTER columns（避免 duplicate row）============
-        # PPT 生成
-        if st.session_state.pop("_gen_pptx_main", False):
-            try:
-                import cloud_pptx
-                pptx_bytes = run_with_progress(
-                    cloud_pptx.summary_to_pptx_bytes, st.session_state.last_summary,
-                    estimated_seconds=15,
-                    label="📊 AI 結構化 + 生成 PPT",
-                )
-                st.session_state.pptx_main = pptx_bytes
-                st.toast("✅ PPT 已生成 - 撳下面 download", icon="📊")
-            except ImportError:
-                st.error("⚠️ Streamlit Cloud 仲喺度裝 python-pptx (5-10 分鐘)。")
-            except Exception as e:
-                st.error(f"❌ PPT 失敗：{e}")
-                with st.expander("🔍 技術詳情"):
-                    st.exception(e)
-
-        if st.session_state.get("pptx_main"):
-            st.download_button(
-                "📥 下載 PPT (.pptx)",
-                st.session_state.pptx_main,
-                file_name=f"{base_name}_簡報.pptx",
-                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                key="dl_pptx_main",
-                use_container_width=True,
-            )
-
-        # Calendar 抽 action items
-        if st.session_state.pop("_gen_ics_main", False):
-            try:
-                items = run_with_progress(
-                    ai.extract_action_items, st.session_state.last_summary,
-                    estimated_seconds=10,
-                    label="📅 AI 抽取 action items",
-                )
-                if not items:
-                    st.warning("呢個 meeting 冇可以加入 calendar 嘅事項")
-                else:
-                    st.session_state.cal_items_main = items
-                    st.session_state.ics_main = cloud_calendar.action_items_to_ics(
-                        items,
-                        meeting_title=base_name,
-                        client=st.session_state.get("last_meeting_name", ""),
-                    )
-                    st.toast(f"✅ 揾到 {len(items)} 個 action items", icon="📅")
-            except Exception as e:
-                show_friendly_error(e, "Action items 抽取")
-
-        # 顯示 calendar 選項（per action item）
-        if st.session_state.get("cal_items_main"):
-            items = st.session_state.cal_items_main
-            client_for_cal = st.session_state.get("last_meeting_name", "")
-            with st.expander(f"📅 {len(items)} 個 action items - 加入 Calendar", expanded=True):
-                for i, it in enumerate(items):
-                    task = it.get("task") or "（無描述）"
-                    deadline = it.get("deadline") or "未定"
-                    assignee = it.get("assignee") or "—"
-                    priority = it.get("priority", "medium")
-                    p_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(priority, "")
-
-                    g_url = cloud_calendar.google_calendar_url(it, client=client_for_cal, meeting_title=base_name)
-                    o_url = cloud_calendar.outlook_calendar_url(it, client=client_for_cal, meeting_title=base_name)
-
-                    st.markdown(
-                        f"**{p_emoji} {task}**  \n"
-                        f"<span style='color:#71717a;font-size:0.8rem;'>"
-                        f"👤 {assignee} · 📅 {deadline}</span>",
-                        unsafe_allow_html=True,
-                    )
-                    btn_col1, btn_col2 = st.columns(2)
-                    with btn_col1:
-                        if IS_PRO:
-                            st.link_button("🟦 Google Calendar", g_url, use_container_width=True)
-                        else:
-                            if st.button("🔒 Google Calendar", use_container_width=True,
-                                         key=f"g_locked_{i}", help="⭐ Pro 功能"):
-                                show_pro_locked_toast("Google Calendar 一鍵 add")
-                    with btn_col2:
-                        if IS_PRO:
-                            st.link_button("🟪 Outlook", o_url, use_container_width=True)
-                        else:
-                            if st.button("🔒 Outlook", use_container_width=True,
-                                         key=f"o_locked_{i}", help="⭐ Pro 功能"):
-                                show_pro_locked_toast("Outlook 一鍵 add")
-                    st.markdown("<hr style='margin:0.5rem 0; opacity:0.3;'>", unsafe_allow_html=True)
-
-                # 整體 ICS download
-                if st.session_state.get("ics_main"):
-                    st.download_button(
-                        "📥 一次過下載 .ics（其他 calendar app）",
-                        st.session_state.ics_main,
-                        file_name=f"{base_name}_calendar.ics",
-                        mime="text/calendar",
-                        key="dl_ics_main",
-                        use_container_width=True,
-                    )
 
         # === 🌐 翻譯 + 🎭 語氣分析 ===
         st.markdown("##### 🤖 AI 進階分析")
@@ -1770,8 +1655,8 @@ with tab_history:
                                 except Exception as e:
                                     st.error(f"升級失敗：{e}")
 
-                    # 4-column download row (mobile-safe: avoids auto-wrap)
-                    col_md, col_word, col_pdf, col_ppt = st.columns(4)
+                    # 3-column download row
+                    col_md, col_word, col_pdf = st.columns(3)
                     base_name = (client or "meeting").replace(" ", "_")
 
                     with col_md:
@@ -1814,50 +1699,13 @@ with tab_history:
                             if st.button("🔒 PDF", key=f"pdf_lk_{m['id']}",
                                          use_container_width=True, help="⭐ Pro 功能"):
                                 show_pro_locked_toast("PDF 匯出")
-                    with col_ppt:
-                        if IS_PRO:
-                            if st.button("📊 PPT", key=f"ppt_btn_{m['id']}",
-                                         use_container_width=True):
-                                st.session_state[f"_h_gen_pptx_{m['id']}"] = True
-                                st.toast("📊 PPT 生成中... (10-20s)", icon="🤖")
-                        else:
-                            if st.button("🔒 PPT", key=f"ppt_lk_{m['id']}",
-                                         use_container_width=True, help="⭐ Pro 功能"):
-                                show_pro_locked_toast("PPT 生成")
 
-                    # 刪除 button - 獨立一行，避免誤撳 + mobile wrap
+                    # 刪除 button - 獨立一行，避免誤撳
                     _, col_del = st.columns([3, 1])
                     with col_del:
                         if st.button("🗑️ 刪除", key=f"del_{m['id']}", use_container_width=True):
                             db.delete_meeting(m["id"], user["id"])
                             st.rerun()
-
-                    # PPT generation (after all columns - avoid duplicate row)
-                    if st.session_state.pop(f"_h_gen_pptx_{m['id']}", False):
-                        try:
-                            import cloud_pptx
-                            pptx_bytes = run_with_progress(
-                                cloud_pptx.summary_to_pptx_bytes, full["summary"],
-                                estimated_seconds=15,
-                                label="📊 AI 生成 PPT",
-                            )
-                            st.session_state[f"h_pptx_{m['id']}"] = pptx_bytes
-                            st.toast("✅ PPT 已生成", icon="📊")
-                        except ImportError:
-                            st.error("python-pptx 仲安裝中，請等 5 分鐘")
-                        except Exception as e:
-                            st.error(f"❌ {e}")
-
-                    # PPT download button
-                    if st.session_state.get(f"h_pptx_{m['id']}"):
-                        st.download_button(
-                            "📥 下載 PPT (.pptx)",
-                            st.session_state[f"h_pptx_{m['id']}"],
-                            file_name=f"{base_name}_簡報.pptx",
-                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                            key=f"h_dl_pptx_{m['id']}",
-                            use_container_width=True,
-                        )
 
                     # === 🤖 AI 進階分析（每個 meeting）===
                     st.markdown("**🤖 AI 進階分析**")
@@ -1958,35 +1806,9 @@ with tab_history:
                             )
 
                     # === 📅 Calendar export + 🔗 Continue meeting ===
-                    st.markdown("**📅 Calendar + 🔗 繼續會議**")
-                    h_col_ics, h_col_cont = st.columns(2)
-
-                    with h_col_ics:
-                        if st.button(
-                            "📅 加入 Calendar",
-                            key=f"h_btn_ics_{m['id']}",
-                            use_container_width=True,
-                        ):
-                            try:
-                                items = run_with_progress(
-                                    ai.extract_action_items, full["summary"],
-                                    estimated_seconds=10,
-                                    label="📅 AI 抽取 action items",
-                                )
-                                if not items:
-                                    st.warning("冇 action items 可以加入")
-                                else:
-                                    ics_b = cloud_calendar.action_items_to_ics(
-                                        items,
-                                        meeting_title=base_name,
-                                        client=client,
-                                    )
-                                    st.session_state[f"h_ics_{m['id']}"] = ics_b
-                                    st.session_state[f"h_ics_count_{m['id']}"] = len(items)
-                            except Exception as e:
-                                st.error(f"失敗：{e}")
-
-                    with h_col_cont:
+                    # === 🔗 繼續會議 ===
+                    _, h_col_cont_wrap = st.columns([2, 3])
+                    with h_col_cont_wrap:
                         if IS_PRO:
                             if st.button(
                                 "🔗 繼續呢個會議",
@@ -2002,17 +1824,6 @@ with tab_history:
                                 help="⭐ Pro 功能",
                             ):
                                 show_pro_locked_toast("繼續會議")
-
-                    # ICS download
-                    if st.session_state.get(f"h_ics_{m['id']}"):
-                        cnt = st.session_state.get(f"h_ics_count_{m['id']}", 0)
-                        st.download_button(
-                            f"📥 下載 .ics ({cnt} 個事項)",
-                            st.session_state[f"h_ics_{m['id']}"],
-                            file_name=f"{base_name}_calendar.ics",
-                            mime="text/calendar",
-                            key=f"h_dl_ics_{m['id']}",
-                        )
 
                     # Continue meeting UI
                     if st.session_state.get(f"h_cont_open_{m['id']}"):
