@@ -1352,7 +1352,9 @@ with tab_history:
     if not meetings:
         st.info("仲未有任何會議紀錄。上面 tab 上傳第一個錄音啦！")
     else:
-        for m in meetings:
+        # 每個 meeting 包成獨立 fragment - 撳 button 唔會 reload 其他 meeting
+        @st.fragment
+        def _render_meeting(m):
             date = m["created_at"][:16].replace("T", " ")
             client = m.get("client") or "—"
             project = m.get("project") or "—"
@@ -1378,13 +1380,13 @@ with tab_history:
                                          use_container_width=True):
                                 st.session_state.pop(edit_key, None)
                                 st.session_state.pop(buf_key, None)
-                                st.rerun()
+                                st.rerun(scope="fragment")
                         else:
                             if st.button("✏️ 編輯", key=f"h_edit_btn_{m['id']}",
                                          use_container_width=True):
                                 st.session_state[edit_key] = True
                                 st.session_state[buf_key] = full["summary"]
-                                st.rerun()
+                                st.rerun(scope="fragment")
 
                     if st.session_state.get(edit_key):
                         # 編輯模式
@@ -1407,6 +1409,9 @@ with tab_history:
                                         new_summary=edited,
                                         additional_duration=0,
                                     )
+                                    # In-place update m["summary"] 令 fragment rerun 就有新值，
+                                    # 唔需要 full page rerun
+                                    m["summary"] = edited
                                     st.session_state.pop(edit_key, None)
                                     st.session_state.pop(buf_key, None)
                                     # Clear cached generated content
@@ -1414,7 +1419,7 @@ with tab_history:
                                               f"h_pptx_{m['id']}", f"h_ics_{m['id']}"]:
                                         st.session_state.pop(k, None)
                                     st.toast("✅ 紀要已更新", icon="✏️")
-                                    st.rerun()
+                                    st.rerun(scope="fragment")
                                 except Exception as e:
                                     st.error(f"儲存失敗：{e}")
                     else:
@@ -1714,6 +1719,10 @@ with tab_history:
                                                 st.rerun()
                                         except Exception as e:
                                             st.error(f"❌ 合併失敗：{e}")
+
+        # Call fragment for each meeting - 每個 button 撳只 rerun 對應 meeting
+        for m in meetings:
+            _render_meeting(m)
 
 
 # ============ Tab 3: Dashboard ============
