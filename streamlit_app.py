@@ -125,7 +125,7 @@ st.set_page_config(
     page_title="Minute.hk - 廣東話會議 AI",
     page_icon=LOGO_DATA_URI,
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
     menu_items={
         "About": "Minute.hk - 香港人專用 AI 會議摘要工具",
     },
@@ -445,73 +445,8 @@ st.markdown("""
     [data-testid="stVerticalBlock"] { gap: 0.4rem !important; }
     .element-container { margin: 0 !important; padding: 0 !important; }
 
-    /* Main content max-width (when sidebar展開) */
-    .main .block-container { max-width: 900px; }
-
-    /* Sidebar - 唔比 collapse + 靚 styling */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-        border-right: 1px solid #e2e8f0;
-        min-width: 260px !important;
-        max-width: 280px !important;
-    }
-    [data-testid="stSidebar"] > div:first-child {
-        padding-top: 1rem;
-    }
-    /* 隱藏 sidebar 嘅 collapse button（強制展開） */
-    [data-testid="stSidebarCollapseButton"] {
-        display: none !important;
-    }
-    [data-testid="stSidebarHeader"] {
-        padding-bottom: 0 !important;
-    }
-    /* Sidebar 入面 markdown */
-    [data-testid="stSidebar"] .stMarkdown { font-size: 0.88rem; }
-    [data-testid="stSidebar"] h5 {
-        font-size: 0.85rem !important;
-        color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin: 0.8rem 0 0.3rem 0 !important;
-    }
-    /* Sidebar 嘅 button */
-    [data-testid="stSidebar"] .stButton button {
-        background: white;
-        font-size: 0.85rem;
-        padding: 0.4rem 0.8rem;
-    }
-    [data-testid="stSidebar"] .stButton button[kind="primary"] {
-        background: linear-gradient(135deg, #1e66f5 0%, #6366f1 100%);
-        color: white;
-        border: none;
-        box-shadow: 0 2px 8px rgba(30, 102, 245, 0.25);
-        font-weight: 600;
-    }
-    /* Sidebar progress bar */
-    [data-testid="stSidebar"] [data-testid="stProgress"] > div > div {
-        background: linear-gradient(90deg, #10b981 0%, #1e66f5 100%);
-    }
-    /* User card */
-    .sidebar-user-card {
-        background: white;
-        padding: 0.8rem;
-        border-radius: 10px;
-        border: 1px solid #e2e8f0;
-        margin-bottom: 0.5rem;
-    }
-    .sidebar-user-name { font-weight: 600; color: #1e293b; font-size: 0.9rem; }
-    .sidebar-user-email { color: #64748b; font-size: 0.75rem; word-break: break-all; }
-    .sidebar-plan-badge {
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 10px;
-        font-size: 0.7rem;
-        font-weight: 700;
-        margin-top: 6px;
-    }
-    .badge-free { background: #eff6ff; color: #1e66f5; }
-    .badge-pro { background: #ecfdf5; color: #047857; }
-    .badge-team { background: #fef3c7; color: #92400e; }
+    /* Main content max-width (sidebar 已 remove, 用返 wider layout) */
+    .main .block-container { max-width: 1100px; }
 
     /* User info top bar (compact, 一行) */
     .user-bar {
@@ -744,7 +679,6 @@ if not auth.is_logged_in():
 user = auth.get_user()
 plan = db.get_user_plan(user["id"])
 plan_emoji = {"free": "🆓", "pro": "⭐", "team": "👥"}.get(plan, "🆓")
-plan_badge_class = {"free": "badge-free", "pro": "badge-pro", "team": "badge-team"}.get(plan, "badge-free")
 
 # === Compute usage for top bar ===
 monthly_used = db.get_monthly_usage_seconds(user["id"]) / 60
@@ -765,7 +699,7 @@ with ubar_outer:
         'padding:0.4rem 1rem;margin-bottom:0.6rem;box-shadow:0 1px 2px rgba(0,0,0,0.03);">',
         unsafe_allow_html=True,
     )
-    col_left, col_mid, col_right = st.columns([4, 3, 2])
+    col_left, col_mid, col_right, col_menu = st.columns([4, 3, 1.6, 0.9])
 
     with col_left:
         st.markdown(f"""
@@ -869,46 +803,35 @@ with ubar_outer:
                 unsafe_allow_html=True,
             )
 
+    with col_menu:
+        with st.popover("⋯", use_container_width=True, help="Menu"):
+            st.markdown(
+                "<a href='https://minutehk.vercel.app' target='_blank' "
+                "style='color:#1e66f5;text-decoration:none;display:block;padding:6px 0;'>"
+                "🏠 主頁</a>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                "<a href='https://minutehk.vercel.app/#faq' target='_blank' "
+                "style='color:#1e66f5;text-decoration:none;display:block;padding:6px 0;'>"
+                "❓ 常見問題</a>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                "<a href='mailto:xavierchow61@gmail.com' "
+                "style='color:#1e66f5;text-decoration:none;display:block;padding:6px 0;'>"
+                "📧 聯絡支援</a>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                "<hr style='margin:0.4rem 0;border:none;border-top:1px solid #e2e8f0;'>",
+                unsafe_allow_html=True,
+            )
+            if st.button("🚪 登出", use_container_width=True, key="logout_menu"):
+                auth.logout()
+                st.rerun()
+
     st.markdown('</div>', unsafe_allow_html=True)
-
-# === Sidebar (簡化版：只係快速連結 + 登出) ===
-with st.sidebar:
-    st.markdown(
-        f"""
-        <div style='display:flex;align-items:center;gap:8px;padding:0.3rem 0 1rem 0;'>
-            <img src='{LOGO_DATA_URI}' alt='Logo' style='width:28px;height:28px;'/>
-            <span style='font-size:1.05rem;font-weight:700;color:#18181b;'>
-                Minute<span style='color:#06b6d4;'>.hk</span>
-            </span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("##### 🔗 快速連結")
-    st.markdown(
-        "<a href='https://minutehk.vercel.app' target='_blank' "
-        "style='color:#1e66f5;text-decoration:none;font-size:0.85rem;display:block;padding:4px 0;'>"
-        "🏠 主頁</a>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "<a href='https://minutehk.vercel.app/#faq' target='_blank' "
-        "style='color:#1e66f5;text-decoration:none;font-size:0.85rem;display:block;padding:4px 0;'>"
-        "❓ 常見問題</a>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "<a href='mailto:xavierchow61@gmail.com' "
-        "style='color:#1e66f5;text-decoration:none;font-size:0.85rem;display:block;padding:4px 0;'>"
-        "📧 聯絡支援</a>",
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("<div style='margin-top:1.5rem;'></div>", unsafe_allow_html=True)
-    if st.button("🚪 登出", use_container_width=True):
-        auth.logout()
-        st.rerun()
 
 # Load user settings (used by 新會議 + 設定 tab)
 user_settings = db.get_user_settings(user["id"])
