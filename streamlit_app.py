@@ -903,7 +903,8 @@ with ubar_outer:
         'padding:0.4rem 1rem;margin-bottom:0.6rem;box-shadow:0 1px 2px rgba(0,0,0,0.03);">',
         unsafe_allow_html=True,
     )
-    col_left, col_mid, col_log, col_right, col_menu = st.columns([4, 2.4, 0.7, 1.6, 0.9])
+    # 5 → 4 columns: 操作記錄 popover 搬入 col_menu (⋯) 嘅內容，呢度唔再佔位
+    col_left, col_mid, col_right, col_menu = st.columns([4, 2.4, 1.6, 0.9])
 
     with col_left:
         st.markdown(f"""
@@ -927,32 +928,6 @@ with ubar_outer:
             f'👋 {user["email"]}</div>',
             unsafe_allow_html=True,
         )
-
-    with col_log:
-        _alog = st.session_state.get("activity_log", [])
-        _badge = f" ({len(_alog)})" if _alog else ""
-        with st.popover(f"📋{_badge}", use_container_width=True, help="操作記錄"):
-            st.markdown("##### 📋 最近操作")
-            if not _alog:
-                st.caption("仲未做過任何 AI 操作")
-            else:
-                _status_emoji = {"running": "🟢", "done": "✅", "error": "❌"}
-                for entry in _alog:
-                    em = _status_emoji.get(entry["status"], "•")
-                    dur = entry.get("duration")
-                    dur_txt = f" · **{dur:.1f}s**" if dur else ""
-                    detail = entry.get("detail") or ""
-                    st.markdown(
-                        f"<div style='padding:4px 0;border-bottom:1px solid #f1f5f9;font-size:0.82rem;'>"
-                        f"{em} <span style='color:#64748b;'>{entry['time']}</span> "
-                        f"{entry['label']}{dur_txt}"
-                        + (f"<br><span style='color:#94a3b8;font-size:0.74rem;padding-left:1.4rem;'>{detail}</span>" if detail else "")
-                        + "</div>",
-                        unsafe_allow_html=True,
-                    )
-                if st.button("🗑️ 清空", key="clear_activity_log", use_container_width=True):
-                    st.session_state.pop("activity_log", None)
-                    st.rerun()
 
     with col_right:
         if plan == "free":
@@ -1033,7 +1008,37 @@ with ubar_outer:
             )
 
     with col_menu:
-        with st.popover("⋯", use_container_width=True, help="Menu"):
+        # ⋯ menu badge: 有 activity log entries 就顯示個數字
+        _alog = st.session_state.get("activity_log", [])
+        _menu_badge = f"⋯ ({len(_alog)})" if _alog else "⋯"
+        with st.popover(_menu_badge, use_container_width=True, help="Menu"):
+            # === 📋 操作記錄（搬入嚟，唔再佔 top bar 位置）===
+            with st.expander(f"📋 最近操作 ({len(_alog)})", expanded=False):
+                if not _alog:
+                    st.caption("仲未做過任何 AI 操作")
+                else:
+                    _status_emoji = {"running": "🟢", "done": "✅", "error": "❌"}
+                    for entry in _alog:
+                        em = _status_emoji.get(entry["status"], "•")
+                        dur = entry.get("duration")
+                        dur_txt = f" · **{dur:.1f}s**" if dur else ""
+                        detail = entry.get("detail") or ""
+                        st.markdown(
+                            f"<div style='padding:4px 0;border-bottom:1px solid #f1f5f9;font-size:0.82rem;'>"
+                            f"{em} <span style='color:#64748b;'>{entry['time']}</span> "
+                            f"{entry['label']}{dur_txt}"
+                            + (f"<br><span style='color:#94a3b8;font-size:0.74rem;padding-left:1.4rem;'>{detail}</span>" if detail else "")
+                            + "</div>",
+                            unsafe_allow_html=True,
+                        )
+                    if st.button("🗑️ 清空", key="clear_activity_log", use_container_width=True):
+                        st.session_state.pop("activity_log", None)
+                        st.rerun()
+            st.markdown(
+                "<hr style='margin:0.4rem 0;border:none;border-top:1px solid #e2e8f0;'>",
+                unsafe_allow_html=True,
+            )
+
             st.markdown(
                 "<a href='https://minutehk.vercel.app' target='_blank' "
                 "style='color:#1e66f5;text-decoration:none;display:block;padding:6px 0;'>"
