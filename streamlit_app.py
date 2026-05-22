@@ -1221,6 +1221,12 @@ with tab_new:
                         st.session_state.pop("pptx_main", None)
                         st.session_state.pop("edit_main_mode", None)
                         st.session_state.pop("edit_main_buffer", None)
+                        # Force a top-of-script rerun so the user bar's
+                        # monthly/daily usage counters reflect this meeting
+                        # immediately (cache was cleared in save_meeting).
+                        # session_state.last_summary survives the rerun, so
+                        # the summary stays displayed downstream.
+                        st.rerun()
 
                     else:
                         # === 完整摘要 + AI 分析 mode ===
@@ -1275,6 +1281,11 @@ with tab_new:
                             st.session_state.pop("pptx_main", None)
                             st.session_state.pop("edit_main_mode", None)
                             st.session_state.pop("edit_main_buffer", None)
+                        # Force a top-of-script rerun so the user bar's
+                        # monthly/daily usage counters reflect this meeting
+                        # immediately. last_summary is in session_state and
+                        # survives the rerun, so summary keeps displaying.
+                        st.rerun()
 
                 except Exception as e:
                     show_friendly_error(e, "AI 處理")
