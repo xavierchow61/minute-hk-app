@@ -2014,67 +2014,19 @@ with tab_settings:
         unsafe_allow_html=True,
     )
 
-    # === Jargon Pack picker (selectbox + 一個 apply button — 取代 9-button grid) ===
-    if IS_PRO:
-        with st.expander("📦 套用行業常用詞 pack", expanded=False):
-            st.caption(
-                "揀行業 → 自動 append 香港常用專業術語落落面 jargon。"
-                "唔覆蓋已有嘅詞、重複會 dedupe。"
-            )
-            packs = jargon_packs.list_packs()
-            pack_keys = [k for k, _ in packs]
-            pack_lookup = {k: p for k, p in packs}
-
-            sel_col, btn_col = st.columns([2, 1])
-            with sel_col:
-                pkey = st.selectbox(
-                    "揀行業",
-                    options=pack_keys,
-                    format_func=lambda k: pack_lookup[k]["label"],
-                    key="jargon_pack_select",
-                    label_visibility="collapsed",
-                )
-            with btn_col:
-                apply_clicked = st.button(
-                    "✅ 套用",
-                    key="apply_jargon_pack",
-                    use_container_width=True,
-                    type="primary",
-                )
-
-            if pkey:
-                p = pack_lookup[pkey]
-                st.caption(f"📋 {p['description']} · {len(p['terms'])} 個詞")
-
-            if apply_clicked and pkey:
-                pack = pack_lookup[pkey]
-                current_jargon = current_settings.get("jargon", "") or ""
-                before = jargon_packs.count_terms(current_jargon)
-                merged = jargon_packs.merge_jargon(current_jargon, pack["terms"])
-                after = jargon_packs.count_terms(merged)
-                added = after - before
-                try:
-                    db.update_user_settings(user["id"], jargon=merged)
-                    if added > 0:
-                        st.toast(
-                            f"✅ {pack['label']} 已套用 · 加咗 {added} 個新詞",
-                            icon="📦",
-                        )
-                    else:
-                        st.toast(
-                            f"ℹ️ {pack['label']} 嘅詞已經全部喺度",
-                            icon="📦",
-                        )
-                    st.rerun(scope="fragment")
-                except Exception as e:
-                    st.error(f"套用失敗：{e}")
-    else:
+    # Free 用戶嘅 Pro teaser (pack picker for Pro users 現在內嵌喺 form 入面)
+    if not IS_PRO:
         with st.expander("🔒 行業 jargon pack（Pro 功能）", expanded=False):
             st.info(
                 "⭐ Pro 用戶可以一鍵套用 9 個行業嘅常用術語 pack —— "
                 "會計 / 法律 / 醫療 / 銷售 / 教育 / 地產 / 金融 / 顧問 / 科技。"
                 "升級 Pro 解鎖。"
             )
+
+    # Lookup table for pack metadata (Pro 用戶 form 入面用到)
+    packs = jargon_packs.list_packs()
+    pack_lookup = {k: p for k, p in packs}
+    pack_keys = [k for k, _ in packs]
 
     with st.form("settings_form"):
         # === Row 1: 公司名稱 + 行業類型（並排）===
@@ -2134,20 +2086,44 @@ with tab_settings:
                 help="⭐ Pro 用戶可揀短/中/長",
             )
 
-        # === Row 3: Jargon (Pro 至 enable) ===
+        # === Row 3: Jargon textarea (left) + Pack picker (right) ===
         if IS_PRO:
             _current_jargon = current_settings.get("jargon", "") or ""
             _jargon_count = jargon_packs.count_terms(_current_jargon)
-            new_jargon = st.text_area(
-                f"📚 自定術語字典 (jargon / 人名 / 客戶名) · 而家有 {_jargon_count} 個詞",
-                value=_current_jargon,
-                placeholder="例：HKFRS 18、Peter Chan、ABC Holdings、CFR、香港金管局、Cap. 622...",
-                height=160,
-                help="用逗號或新行分隔。AI 會特別留意呢啲詞，識別準確度大幅提升。"
-                     "上面個 jargon pack expander 可以一鍵 import 行業常用詞。",
-            )
+
+            # Textarea 同 pack picker 並排：textarea 較闊、picker 較窄
+            jcol_main, jcol_pack = st.columns([3, 1])
+            with jcol_main:
+                new_jargon = st.text_area(
+                    f"📚 自定術語字典 · {_jargon_count} 個詞",
+                    value=_current_jargon,
+                    placeholder="例：HKFRS 18、Peter Chan、ABC Holdings、CFR、香港金管局、Cap. 622...",
+                    height=180,
+                    help="用逗號或新行分隔。AI 會特別留意呢啲詞，識別準確度大幅提升。"
+                         "右邊「套用 pack」可以一鍵 import 行業常用詞。",
+                )
+            with jcol_pack:
+                st.markdown(
+                    "<div style='font-size:0.875rem;font-weight:600;"
+                    "color:#262730;margin-bottom:0.25rem;'>📦 行業 pack</div>",
+                    unsafe_allow_html=True,
+                )
+                pack_select = st.selectbox(
+                    "揀行業",
+                    options=pack_keys,
+                    format_func=lambda k: f"{pack_lookup[k]['label']} ({len(pack_lookup[k]['terms'])})",
+                    key="jargon_pack_select",
+                    label_visibility="collapsed",
+                )
+                apply_pack = st.form_submit_button(
+                    "✅ 套用 pack",
+                    use_container_width=True,
+                    help="會 append 落左邊嘅 jargon，dedupe，順手 save 埋其他設定",
+                )
         else:
             new_jargon = ""
+            pack_select = None
+            apply_pack = False
             st.text_area(
                 "🔒 自定術語字典 (Pro)",
                 value="",
@@ -2165,7 +2141,39 @@ with tab_settings:
             type="primary",
             use_container_width=True,
         )
-        if submitted:
+
+        # === Handle which submit button was clicked ===
+        # 兩個 button 同時喺 form 入面，一次 submit 只有一個 return True
+        if apply_pack and pack_select:
+            pack = pack_lookup[pack_select]
+            jargon_now = (new_jargon or "").strip()
+            before = jargon_packs.count_terms(jargon_now)
+            merged = jargon_packs.merge_jargon(jargon_now, pack["terms"])
+            after = jargon_packs.count_terms(merged)
+            added = after - before
+            try:
+                # Save merged jargon + 順手 save 其他 form fields 唔好 lose 用戶 typing
+                db.update_user_settings(
+                    user["id"],
+                    company_name=new_company.strip(),
+                    industry=new_industry,
+                    jargon=merged,
+                    summary_length=new_length,
+                )
+                if added > 0:
+                    st.toast(
+                        f"✅ {pack['label']} 已套用 · 加咗 {added} 個新詞",
+                        icon="📦",
+                    )
+                else:
+                    st.toast(
+                        f"ℹ️ {pack['label']} 嘅詞已經全部喺度",
+                        icon="📦",
+                    )
+                st.rerun(scope="fragment")
+            except Exception as e:
+                st.error(f"套用失敗：{e}")
+        elif submitted:
             try:
                 db.update_user_settings(
                     user["id"],
