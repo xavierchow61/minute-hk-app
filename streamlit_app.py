@@ -235,15 +235,38 @@ LOGO_B64 = base64.b64encode(LOGO_SVG.encode("utf-8")).decode("ascii")
 LOGO_DATA_URI = f"data:image/svg+xml;base64,{LOGO_B64}"
 
 # ============ Page Config ============
+# Environment flag — set ENV = "uat" in Streamlit Cloud secrets for the UAT app.
+# Anything else (including unset) is treated as production.
+ENV = (st.secrets.get("ENV", "production") or "production").lower()
+IS_UAT = ENV == "uat"
+
 st.set_page_config(
-    page_title="Minute.hk - 廣東話會議 AI",
+    page_title=("[UAT] Minute.hk - 廣東話會議 AI" if IS_UAT
+                else "Minute.hk - 廣東話會議 AI"),
     page_icon=LOGO_DATA_URI,
     layout="wide",
     initial_sidebar_state="collapsed",
     menu_items={
-        "About": "Minute.hk - 香港人專用 AI 會議摘要工具",
+        "About": ("Minute.hk UAT — 測試環境，數據獨立於 prod" if IS_UAT
+                  else "Minute.hk - 香港人專用 AI 會議摘要工具"),
     },
 )
+
+# Visible banner so you can never confuse UAT vs prod at a glance.
+if IS_UAT:
+    st.markdown(
+        """
+        <div style='background:linear-gradient(90deg,#fef3c7,#fde68a);
+                    color:#7c2d12;padding:8px 14px;border-radius:10px;
+                    text-align:center;font-weight:600;font-size:0.85rem;
+                    margin-bottom:0.6rem;border:1px solid #fbbf24;'>
+            🧪 <strong>UAT 測試版</strong> · 呢度嘅數據獨立於 prod，可以隨便試 ·
+            <a href='https://minute-hk-app.streamlit.app' target='_blank'
+               style='color:#7c2d12;text-decoration:underline;'>切換去 Prod</a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ============ Style - modern card-based design (cyan brand) ============
 st.markdown("""
