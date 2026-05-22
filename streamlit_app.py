@@ -1075,56 +1075,32 @@ tab_new, tab_history, tab_dashboard, tab_settings = st.tabs([
 
 # ============ Tab 1: New Meeting ============
 with tab_new:
-    # 同 History tab 嘅 [3,1,1] 一致風格 - 客戶/項目大 input + 細 selector
-    col1, col2, col3 = st.columns([3, 3, 1])
-    with col1:
-        client_name = st.text_input("客戶", placeholder="ABC Limited",
-                                    label_visibility="collapsed")
-    with col2:
-        project_name = st.text_input("項目", placeholder="2026 audit",
-                                     label_visibility="collapsed")
-    with col3:
-        # 紀要長度 selector — Pro 至可揀，Free 強制 medium
-        if IS_PRO:
-            length_keys = list(db.SUMMARY_LENGTHS.keys())
-            default_length = user_settings.get("summary_length", "medium")
-            try:
-                default_idx = length_keys.index(default_length)
-            except ValueError:
-                default_idx = 1
-            summary_length = st.selectbox(
-                "長度",
-                options=length_keys,
-                format_func=lambda k: db.SUMMARY_LENGTHS[k].split("（")[0],
-                index=default_idx,
-                label_visibility="collapsed",
-                key="meeting_length",
-            )
-        else:
-            summary_length = "medium"
-            st.selectbox(
-                "長度",
-                options=["🔒 中（Pro）"],
-                index=0,
-                disabled=True,
-                label_visibility="collapsed",
-                key="meeting_length_free",
-                help="⭐ Pro 用戶可揀短/中/長",
-            )
-
-    # 處理模式：完整摘要 vs 純轉文字
-    process_mode = st.radio(
-        "處理模式",
-        options=["📝 完整摘要 + AI 分析", "📋 純轉文字（快速 · 唔做分析）"],
-        index=0,
-        horizontal=True,
-        label_visibility="collapsed",
-        key="process_mode",
-        help="純轉文字：只 transcribe 錄音內容，唔做總結 / action items / 分析",
-    )
+    # ===== 1. 處理模式（最頂、最顯眼）=====
+    # st.segmented_control gives a cleaner pill-like toggle vs the old radio
+    try:
+        process_mode = st.segmented_control(
+            "處理模式",
+            options=["📝 完整摘要 + AI 分析", "📋 純轉文字（快速）"],
+            default="📝 完整摘要 + AI 分析",
+            label_visibility="collapsed",
+            key="process_mode",
+        )
+    except AttributeError:
+        # Fallback for older Streamlit versions (< 1.39)
+        process_mode = st.radio(
+            "處理模式",
+            options=["📝 完整摘要 + AI 分析", "📋 純轉文字（快速）"],
+            index=0,
+            horizontal=True,
+            label_visibility="collapsed",
+            key="process_mode",
+        )
+    # segmented_control 可以 return None (deselect)，預設 fallback 落「完整摘要」
+    if not process_mode:
+        process_mode = "📝 完整摘要 + AI 分析"
     transcribe_only_mode = process_mode.startswith("📋")
 
-    # 兩個 input 方法 tabs
+    # ===== 2. Input method（上傳 / 錄音）=====
     in_tab_upload, in_tab_record = st.tabs(["📁 上傳檔案", "🎙️ 直接錄音"])
 
     with in_tab_upload:
@@ -1147,6 +1123,11 @@ with tab_new:
     audio_source = uploaded or recorded
     is_recording = recorded is not None and uploaded is None
 
+    # ===== 3. 預設值 (如果用戶冇展開額外資料，就用呢啲) =====
+    client_name = ""
+    project_name = ""
+    summary_length = user_settings.get("summary_length", "medium") if IS_PRO else "medium"
+
     if audio_source:
         if is_recording:
             file_size_mb = len(audio_source.getvalue()) / (1024 * 1024)
@@ -1158,6 +1139,57 @@ with tab_new:
 
         # local var name 為咗下面 code 兼容
         uploaded = audio_source
+
+        # ===== 4. 額外資料 expander (optional inputs)，預設摺埋 =====
+        # 用戶填過 client/project 就自動展開（睇得到自己填過咩）
+        _has_extras = bool(
+            st.session_state.get("meeting_client")
+            or st.session_state.get("meeting_project")
+        )
+        with st.expander(
+            "📝 額外資料（客戶 / 項目 / 紀要長度 · optional）",
+            expanded=_has_extras,
+        ):
+            extras_col_client, extras_col_project = st.columns(2)
+            with extras_col_client:
+                client_name = st.text_input(
+                    "客戶",
+                    placeholder="ABC Limited",
+                    key="meeting_client",
+                )
+            with extras_col_project:
+                project_name = st.text_input(
+                    "項目",
+                    placeholder="2026 audit",
+                    key="meeting_project",
+                )
+
+            # 紀要長度 selector — Pro 至可揀
+            if IS_PRO:
+                length_keys = list(db.SUMMARY_LENGTHS.keys())
+                default_length = user_settings.get("summary_length", "medium")
+                try:
+                    default_idx = length_keys.index(default_length)
+                except ValueError:
+                    default_idx = 1
+                summary_length = st.selectbox(
+                    "紀要長度",
+                    options=length_keys,
+                    format_func=lambda k: db.SUMMARY_LENGTHS[k],
+                    index=default_idx,
+                    key="meeting_length",
+                    help="新會議 default 喺「⚙️ 設定」改",
+                )
+            else:
+                summary_length = "medium"
+                st.selectbox(
+                    "🔒 紀要長度（Pro）",
+                    options=["中（標準格式）"],
+                    index=0,
+                    disabled=True,
+                    key="meeting_length_free",
+                    help="⭐ Pro 用戶可揀短/中/長",
+                )
 
         est_duration_sec = file_size_mb * 60
 
