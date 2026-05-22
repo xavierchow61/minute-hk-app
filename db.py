@@ -304,9 +304,13 @@ def update_user_settings(user_id: str, **kwargs) -> None:
 # ============================================================
 # Dashboard analytics (#6)
 # ============================================================
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_dashboard_stats(user_id: str) -> dict:
-    """攞 dashboard 統計（**唔 fetch summary text**，加快 10x）"""
+    """攞 dashboard 統計（**唔 fetch summary text**，加快 10x）
+
+    TTL 5 分鐘 — 任何 meeting mutation 都會 invalidate_meeting_cache(),
+    所以唔需要短 TTL 保鮮，dashboard 開頁可以行 cache hit 唔再 query DB.
+    """
     sb = get_supabase()
     # 只 select metadata fields - 唔好 fetch summary（大）
     result = (

@@ -37,6 +37,18 @@ def _build_pdf_cached(summary_md: str) -> bytes:
     return cloud_exporters.md_to_pdf_bytes(summary_md)
 
 
+# Wordcloud generation is CPU-heavy (jieba tokenisation + PIL render).
+# Cache by corpus content so re-clicking the button on the same data is instant.
+@st.cache_data(ttl=1800, show_spinner=False, max_entries=20)
+def _build_wordcloud_cached(corpus: str, max_words: int = 80) -> bytes | None:
+    return dashboard.generate_wordcloud_image(corpus, max_words=max_words)
+
+
+@st.cache_data(ttl=1800, show_spinner=False, max_entries=20)
+def _extract_keywords_cached(corpus: str, top_n: int = 30) -> list[tuple[str, int]]:
+    return dashboard.extract_keywords(corpus, top_n=top_n)
+
+
 def is_pro_user(user_plan: str) -> bool:
     """判斷係咪 Pro/Team 用戶（可以用 advanced features）"""
     return user_plan in ("pro", "team")
@@ -1887,13 +1899,12 @@ with tab_dashboard:
                 try:
                     # Lazy fetch summaries (only when clicked)
                     summaries_text = db.get_summaries_for_wordcloud(user["id"])
-                    img_bytes = dashboard.generate_wordcloud_image(
-                        summaries_text, max_words=80
-                    )
+                    # Cached by corpus content — re-click on same data is instant
+                    img_bytes = _build_wordcloud_cached(summaries_text, max_words=80)
                     if img_bytes:
                         st.session_state.wordcloud_img = img_bytes
                     else:
-                        keywords = dashboard.extract_keywords(summaries_text, top_n=30)
+                        keywords = _extract_keywords_cached(summaries_text, top_n=30)
                         st.session_state.wordcloud_keywords = keywords
                 except Exception as e:
                     st.error(f"詞雲生成失敗：{e}")
