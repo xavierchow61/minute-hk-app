@@ -1352,7 +1352,7 @@ with tab_new:
                     except Exception as e:
                         st.error(f"升級失敗：{e}")
 
-        st.markdown("##### 📥 下載")
+        # === 📥 下載（最常用 action，永遠 visible） ===
         col_md, col_word, col_pdf = st.columns(3)
         base_name = st.session_state.get("last_meeting_name", "meeting").replace(" ", "_")
 
@@ -1396,64 +1396,68 @@ with tab_new:
                              help="⭐ 升級 Pro 解鎖 PDF 匯出"):
                     show_pro_locked_toast("PDF 匯出")
 
-        # === 🌐 翻譯 + 🎭 語氣分析 ===
-        st.markdown("##### 🤖 AI 進階分析")
+        # === 🤖 更多 AI 分析（次要 action，預設摺埋）===
+        # 已生成過結果就自動展開，等用戶見到 button 可以再 generate
+        _ai_used = bool(
+            st.session_state.get("last_translation")
+            or st.session_state.get("last_sentiment")
+        )
+        with st.expander("🤖 更多 AI 分析（翻譯 / 語氣分析）", expanded=_ai_used):
+            col_t, col_s = st.columns(2)
 
-        col_t, col_s = st.columns(2)
-
-        # --- Translate (Free: English + 簡中 only; Pro: all 6) ---
-        with col_t:
-            if IS_PRO:
-                translate_options = list(ai.TRANSLATE_TARGETS.values())
-            else:
-                # Free user 只可揀 English + Simplified Chinese
-                translate_options = ["English", "简体中文"]
-            target_label = st.selectbox(
-                "🌐 翻譯紀要",
-                options=translate_options,
-                key="translate_target",
-                label_visibility="collapsed",
-                help="⭐ Pro 用戶可揀 6 國語言" if not IS_PRO else None,
-            )
-            if st.button("🌐 翻譯", use_container_width=True, key="btn_translate"):
-                target_code = next(
-                    (k for k, v in ai.TRANSLATE_TARGETS.items() if v == target_label),
-                    "en"
+            # --- Translate (Free: English + 簡中 only; Pro: all 6) ---
+            with col_t:
+                if IS_PRO:
+                    translate_options = list(ai.TRANSLATE_TARGETS.values())
+                else:
+                    translate_options = ["English", "简体中文"]
+                target_label = st.selectbox(
+                    "🌐 翻譯紀要",
+                    options=translate_options,
+                    key="translate_target",
+                    label_visibility="collapsed",
+                    help="⭐ Pro 用戶可揀 6 國語言" if not IS_PRO else None,
                 )
-                try:
-                    translated = run_with_progress(
-                        ai.translate, st.session_state.last_summary, target_code,
-                        estimated_seconds=10,
-                        label=f"🌐 翻譯成 {target_label}",
+                if st.button("🌐 翻譯", use_container_width=True, key="btn_translate"):
+                    target_code = next(
+                        (k for k, v in ai.TRANSLATE_TARGETS.items() if v == target_label),
+                        "en"
                     )
-                    st.session_state.last_translation = translated
-                    st.session_state.last_translation_lang = target_label
-                except Exception as e:
-                    st.error(f"翻譯失敗：{e}")
-
-        # --- Sentiment (Pro only) ---
-        with col_s:
-            st.markdown(
-                "<div style='height:38px;display:flex;align-items:center;color:#64748b;font-size:0.85rem;'>"
-                "🎭 分析會議語氣 + 風險信號"
-                "</div>",
-                unsafe_allow_html=True,
-            )
-            if IS_PRO:
-                if st.button("🎭 語氣分析", use_container_width=True, key="btn_sentiment"):
                     try:
-                        sentiment = run_with_progress(
-                            ai.analyze_sentiment, st.session_state.last_summary,
+                        translated = run_with_progress(
+                            ai.translate, st.session_state.last_summary, target_code,
                             estimated_seconds=10,
-                            label="🎭 AI 分析語氣 + 風險",
+                            label=f"🌐 翻譯成 {target_label}",
                         )
-                        st.session_state.last_sentiment = sentiment
+                        st.session_state.last_translation = translated
+                        st.session_state.last_translation_lang = target_label
                     except Exception as e:
-                        st.error(f"分析失敗：{e}")
-            else:
-                if st.button("🔒 語氣分析", use_container_width=True, key="btn_sentiment_locked",
-                             help="⭐ 升級 Pro 解鎖"):
-                    show_pro_locked_toast("語氣分析")
+                        st.error(f"翻譯失敗：{e}")
+
+            # --- Sentiment (Pro only) ---
+            with col_s:
+                st.markdown(
+                    "<div style='height:38px;display:flex;align-items:center;"
+                    "color:#64748b;font-size:0.85rem;'>"
+                    "🎭 偵測情緒 + 風險信號"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
+                if IS_PRO:
+                    if st.button("🎭 語氣分析", use_container_width=True, key="btn_sentiment"):
+                        try:
+                            sentiment = run_with_progress(
+                                ai.analyze_sentiment, st.session_state.last_summary,
+                                estimated_seconds=10,
+                                label="🎭 AI 分析語氣 + 風險",
+                            )
+                            st.session_state.last_sentiment = sentiment
+                        except Exception as e:
+                            st.error(f"分析失敗：{e}")
+                else:
+                    if st.button("🔒 語氣分析", use_container_width=True, key="btn_sentiment_locked",
+                                 help="⭐ 升級 Pro 解鎖"):
+                        show_pro_locked_toast("語氣分析")
 
         # 顯示翻譯結果
         if st.session_state.get("last_translation"):
@@ -1973,53 +1977,64 @@ with tab_settings:
         unsafe_allow_html=True,
     )
 
-    # === Jargon Pack picker (outside the form, so buttons trigger reruns) ===
+    # === Jargon Pack picker (selectbox + 一個 apply button — 取代 9-button grid) ===
     if IS_PRO:
-        with st.expander("📦 一鍵套用行業 jargon pack（推薦）", expanded=False):
+        with st.expander("📦 套用行業常用詞 pack", expanded=False):
             st.caption(
-                "揀你嘅行業 → 自動 append 香港常用嘅專業術語落下面嘅 jargon。"
-                "唔會覆蓋已有嘅詞，重複會 dedupe。"
+                "揀行業 → 自動 append 香港常用專業術語落落面 jargon。"
+                "唔覆蓋已有嘅詞、重複會 dedupe。"
             )
             packs = jargon_packs.list_packs()
-            pack_cols = st.columns(3)
-            for idx, (pkey, pack) in enumerate(packs):
-                with pack_cols[idx % 3]:
-                    if st.button(
-                        pack["label"],
-                        key=f"apply_pack_{pkey}",
-                        use_container_width=True,
-                        help=f"{pack['description']}（{len(pack['terms'])} 個詞）",
-                    ):
-                        current_jargon = current_settings.get("jargon", "") or ""
-                        before = jargon_packs.count_terms(current_jargon)
-                        merged = jargon_packs.merge_jargon(
-                            current_jargon, pack["terms"]
+            pack_keys = [k for k, _ in packs]
+            pack_lookup = {k: p for k, p in packs}
+
+            sel_col, btn_col = st.columns([2, 1])
+            with sel_col:
+                pkey = st.selectbox(
+                    "揀行業",
+                    options=pack_keys,
+                    format_func=lambda k: pack_lookup[k]["label"],
+                    key="jargon_pack_select",
+                    label_visibility="collapsed",
+                )
+            with btn_col:
+                apply_clicked = st.button(
+                    "✅ 套用",
+                    key="apply_jargon_pack",
+                    use_container_width=True,
+                    type="primary",
+                )
+
+            if pkey:
+                p = pack_lookup[pkey]
+                st.caption(f"📋 {p['description']} · {len(p['terms'])} 個詞")
+
+            if apply_clicked and pkey:
+                pack = pack_lookup[pkey]
+                current_jargon = current_settings.get("jargon", "") or ""
+                before = jargon_packs.count_terms(current_jargon)
+                merged = jargon_packs.merge_jargon(current_jargon, pack["terms"])
+                after = jargon_packs.count_terms(merged)
+                added = after - before
+                try:
+                    db.update_user_settings(user["id"], jargon=merged)
+                    if added > 0:
+                        st.toast(
+                            f"✅ {pack['label']} 已套用 · 加咗 {added} 個新詞",
+                            icon="📦",
                         )
-                        after = jargon_packs.count_terms(merged)
-                        added = after - before
-                        try:
-                            db.update_user_settings(user["id"], jargon=merged)
-                            if added > 0:
-                                st.toast(
-                                    f"✅ {pack['label']} 已套用 · 加咗 {added} 個新詞",
-                                    icon="📦",
-                                )
-                            else:
-                                st.toast(
-                                    f"ℹ️ {pack['label']} 嘅詞已經全部喺度",
-                                    icon="📦",
-                                )
-                            st.rerun(scope="fragment")
-                        except Exception as e:
-                            st.error(f"套用失敗：{e}")
-            st.caption(
-                "💡 套用後即時生效（已 save 落 DB），下面 textarea 會更新到。"
-                "想刪除某個詞就喺 textarea 入面直接 edit + 儲存。"
-            )
+                    else:
+                        st.toast(
+                            f"ℹ️ {pack['label']} 嘅詞已經全部喺度",
+                            icon="📦",
+                        )
+                    st.rerun(scope="fragment")
+                except Exception as e:
+                    st.error(f"套用失敗：{e}")
     else:
         with st.expander("🔒 行業 jargon pack（Pro 功能）", expanded=False):
             st.info(
-                "⭐ Pro 用戶可以一鍵套用 10 個行業嘅常用術語 pack —— "
+                "⭐ Pro 用戶可以一鍵套用 9 個行業嘅常用術語 pack —— "
                 "會計 / 法律 / 醫療 / 銷售 / 教育 / 地產 / 金融 / 顧問 / 科技。"
                 "升級 Pro 解鎖。"
             )
