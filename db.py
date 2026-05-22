@@ -68,12 +68,18 @@ def save_meeting(user_id: str, summary: str, transcript: str = "",
 
 @st.cache_data(ttl=30, show_spinner=False)
 def list_meetings(user_id: str, limit: int = 50) -> list[dict]:
-    """(cached 30s)"""
+    """(cached 30s)
+
+    用 deleted_at IS NULL 過濾 soft-deleted meetings，
+    咁用戶 delete 完就見唔到，但 usage 計算 (get_monthly/daily_usage_seconds)
+    仍然會將 deleted rows 計入 quota — 防止用戶 delete 後刷返額度。
+    """
     sb = get_supabase()
     result = (
         sb.table("meetings")
         .select("id, created_at, client, project, duration_seconds, summary")
         .eq("user_id", user_id)
+        .is_("deleted_at", "null")
         .order("created_at", desc=True)
         .limit(limit)
         .execute()
@@ -89,7 +95,7 @@ def search_meetings(
     limit: int = 100,
 ) -> list[dict]:
     """
-    搜尋過往會議：
+    搜尋過往會議（自動排除 soft-deleted）：
       - 文字 query → match client / project / summary / transcript
       - date_from / date_to → 日期範圍 (inclusive)
     """
@@ -98,6 +104,7 @@ def search_meetings(
         sb.table("meetings")
         .select("id, created_at, client, project, duration_seconds, summary")
         .eq("user_id", user_id)
+        .is_("deleted_at", "null")
     )
 
     if query and query.strip():
@@ -121,12 +128,14 @@ def search_meetings(
 
 
 def get_meeting(meeting_id: str, user_id: str) -> dict | None:
+    """攞單一 meeting（會 hide soft-deleted — 用戶唔應該再 access 已刪嘅）"""
     sb = get_supabase()
     result = (
         sb.table("meetings")
         .select("*")
         .eq("id", meeting_id)
         .eq("user_id", user_id)
+        .is_("deleted_at", "null")
         .single()
         .execute()
     )
@@ -134,15 +143,23 @@ def get_meeting(meeting_id: str, user_id: str) -> dict | None:
 
 
 def delete_meeting(meeting_id: str, user_id: str):
+    """Soft delete: 標記 deleted_at = NOW()，row 仍喺度，咁:
+      - 用戶 history / dashboard / search 都見唔到
+      - 但 monthly / daily usage 仍然計入呢段 duration（防止刷額度）
+    """
     sb = get_supabase()
-    sb.table("meetings").delete().eq("id", meeting_id).eq("user_id", user_id).execute()
+    sb.table("meetings").update(
+        {"deleted_at": datetime.now(timezone.utc).isoformat()}
+    ).eq("id", meeting_id).eq("user_id", user_id).is_(
+        "deleted_at", "null"
+    ).execute()
     invalidate_meeting_cache()
 
 
 def update_meeting_summary(meeting_id: str, user_id: str,
                             new_summary: str,
                             additional_duration: float = 0) -> None:
-    """Update meeting 嘅 summary（用於繼續會議合併）"""
+    """Update meeting 嘅 summary（用於繼續會議合併）。Defensively 唔操作 soft-deleted。"""
     sb = get_supabase()
     # 攞返原本 duration
     existing = (
@@ -150,6 +167,7 @@ def update_meeting_summary(meeting_id: str, user_id: str,
         .select("duration_seconds")
         .eq("id", meeting_id)
         .eq("user_id", user_id)
+        .is_("deleted_at", "null")
         .limit(1)
         .execute()
     )
@@ -160,7 +178,9 @@ def update_meeting_summary(meeting_id: str, user_id: str,
     sb.table("meetings").update({
         "summary": new_summary,
         "duration_seconds": new_duration,
-    }).eq("id", meeting_id).eq("user_id", user_id).execute()
+    }).eq("id", meeting_id).eq("user_id", user_id).is_(
+        "deleted_at", "null"
+    ).execute()
     invalidate_meeting_cache()
 
 
@@ -310,6 +330,9 @@ def get_dashboard_stats(user_id: str) -> dict:
 
     TTL 5 分鐘 — 任何 meeting mutation 都會 invalidate_meeting_cache(),
     所以唔需要短 TTL 保鮮，dashboard 開頁可以行 cache hit 唔再 query DB.
+
+    Soft-deleted 唔計入 dashboard（用戶 delete 完就唔想再見到統計入面），
+    但 monthly/daily usage 函數會計入 — 兩者分開。
     """
     sb = get_supabase()
     # 只 select metadata fields - 唔好 fetch summary（大）
@@ -317,6 +340,7 @@ def get_dashboard_stats(user_id: str) -> dict:
         sb.table("meetings")
         .select("id, created_at, client, project, duration_seconds")
         .eq("user_id", user_id)
+        .is_("deleted_at", "null")
         .order("created_at", desc=False)
         .execute()
     )
@@ -349,12 +373,15 @@ def get_dashboard_stats(user_id: str) -> dict:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_summaries_for_wordcloud(user_id: str) -> str:
-    """獨立 query 攞 summary text - 只喺用戶撳「生成詞雲」時先 call"""
+    """獨立 query 攞 summary text - 只喺用戶撳「生成詞雲」時先 call。
+    Soft-deleted 唔計（用戶唔想睇）。
+    """
     sb = get_supabase()
     result = (
         sb.table("meetings")
         .select("summary")
         .eq("user_id", user_id)
+        .is_("deleted_at", "null")
         .execute()
     )
     return "\n\n".join(m.get("summary", "") for m in (result.data or []))
@@ -362,7 +389,13 @@ def get_summaries_for_wordcloud(user_id: str) -> str:
 
 @st.cache_data(ttl=20, show_spinner=False)
 def get_monthly_usage_seconds(user_id: str) -> float:
-    """Returns total seconds processed this calendar month (cached 20s)"""
+    """Returns total seconds processed this calendar month (cached 20s).
+
+    ⚠️ **故意唔 filter deleted_at**：呢個係 quota 計算，soft-deleted
+    嘅 meeting 一樣要計入用戶今個月用咗幾多 (防止刷額度 -- delete 完
+    可以再 transcribe)。Dashboard / list 啲 query 先會 filter
+    deleted_at。
+    """
     sb = get_supabase()
     now = datetime.now(timezone.utc)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -378,7 +411,10 @@ def get_monthly_usage_seconds(user_id: str) -> float:
 
 @st.cache_data(ttl=20, show_spinner=False)
 def get_daily_usage_seconds(user_id: str) -> float:
-    """Returns total seconds processed today (cached 20s)"""
+    """Returns total seconds processed today (cached 20s).
+
+    同 get_monthly_usage_seconds：故意計埋 soft-deleted (見上面註解).
+    """
     sb = get_supabase()
     now = datetime.now(timezone.utc)
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)

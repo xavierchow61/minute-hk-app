@@ -35,6 +35,7 @@ GitHub: xavierchow61/minute-hk-app
    supabase_schema.sql
    supabase_migration_v2.sql
    supabase_migration_v3_invite.sql
+   supabase_migration_v4_softdelete.sql
    ```
    每個 file copy paste 入 Supabase Dashboard → SQL Editor → Run
 
