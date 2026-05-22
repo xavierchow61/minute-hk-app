@@ -12,6 +12,7 @@ import cloud_exporters
 import cloud_stripe
 import dashboard
 import db
+import jargon_packs
 
 
 @st.cache_data(ttl=1800, show_spinner=False)  # 30 分鐘 cache
@@ -1949,12 +1950,68 @@ with tab_dashboard:
 with tab_settings:
   @st.fragment
   def _render_settings_tab():
+    # Re-fetch inside the fragment so that "apply pack" buttons (which save to
+    # DB + clear cache) show the updated jargon on the next fragment rerun
+    # without needing a full app rerun.
+    current_settings = db.get_user_settings(user["id"])
+
     st.markdown(
         '<div style="margin-bottom:1.2rem;">'
         '<h2 style="margin:0;">⚙️ 個人化設定</h2>'
         '</div>',
         unsafe_allow_html=True,
     )
+
+    # === Jargon Pack picker (outside the form, so buttons trigger reruns) ===
+    if IS_PRO:
+        with st.expander("📦 一鍵套用行業 jargon pack（推薦）", expanded=False):
+            st.caption(
+                "揀你嘅行業 → 自動 append 香港常用嘅專業術語落下面嘅 jargon。"
+                "唔會覆蓋已有嘅詞，重複會 dedupe。"
+            )
+            packs = jargon_packs.list_packs()
+            pack_cols = st.columns(3)
+            for idx, (pkey, pack) in enumerate(packs):
+                with pack_cols[idx % 3]:
+                    if st.button(
+                        pack["label"],
+                        key=f"apply_pack_{pkey}",
+                        use_container_width=True,
+                        help=f"{pack['description']}（{len(pack['terms'])} 個詞）",
+                    ):
+                        current_jargon = current_settings.get("jargon", "") or ""
+                        before = jargon_packs.count_terms(current_jargon)
+                        merged = jargon_packs.merge_jargon(
+                            current_jargon, pack["terms"]
+                        )
+                        after = jargon_packs.count_terms(merged)
+                        added = after - before
+                        try:
+                            db.update_user_settings(user["id"], jargon=merged)
+                            if added > 0:
+                                st.toast(
+                                    f"✅ {pack['label']} 已套用 · 加咗 {added} 個新詞",
+                                    icon="📦",
+                                )
+                            else:
+                                st.toast(
+                                    f"ℹ️ {pack['label']} 嘅詞已經全部喺度",
+                                    icon="📦",
+                                )
+                            st.rerun(scope="fragment")
+                        except Exception as e:
+                            st.error(f"套用失敗：{e}")
+            st.caption(
+                "💡 套用後即時生效（已 save 落 DB），下面 textarea 會更新到。"
+                "想刪除某個詞就喺 textarea 入面直接 edit + 儲存。"
+            )
+    else:
+        with st.expander("🔒 行業 jargon pack（Pro 功能）", expanded=False):
+            st.info(
+                "⭐ Pro 用戶可以一鍵套用 10 個行業嘅常用術語 pack —— "
+                "會計 / 法律 / 醫療 / 銷售 / 教育 / 地產 / 金融 / 顧問 / 科技。"
+                "升級 Pro 解鎖。"
+            )
 
     with st.form("settings_form"):
         # === Row 1: 公司名稱 + 行業類型（並排）===
@@ -1963,7 +2020,7 @@ with tab_settings:
         with col_a:
             new_company = st.text_input(
                 "🏢 公司名稱",
-                value=user_settings.get("company_name", ""),
+                value=current_settings.get("company_name", ""),
                 placeholder="例：陳氏會計師樓",
             )
 
@@ -1971,7 +2028,7 @@ with tab_settings:
             if IS_PRO:
                 industry_keys = list(db.INDUSTRIES.keys())
                 try:
-                    ind_idx = industry_keys.index(user_settings.get("industry", "generic"))
+                    ind_idx = industry_keys.index(current_settings.get("industry", "generic"))
                 except ValueError:
                     ind_idx = 0
                 new_industry = st.selectbox(
@@ -1994,7 +2051,7 @@ with tab_settings:
         if IS_PRO:
             length_keys = list(db.SUMMARY_LENGTHS.keys())
             try:
-                len_idx = length_keys.index(user_settings.get("summary_length", "medium"))
+                len_idx = length_keys.index(current_settings.get("summary_length", "medium"))
             except ValueError:
                 len_idx = 1
             new_length = st.selectbox(
@@ -2016,12 +2073,15 @@ with tab_settings:
 
         # === Row 3: Jargon (Pro 至 enable) ===
         if IS_PRO:
+            _current_jargon = current_settings.get("jargon", "") or ""
+            _jargon_count = jargon_packs.count_terms(_current_jargon)
             new_jargon = st.text_area(
-                "📚 自定術語字典 (jargon / 人名 / 客戶名)",
-                value=user_settings.get("jargon", ""),
+                f"📚 自定術語字典 (jargon / 人名 / 客戶名) · 而家有 {_jargon_count} 個詞",
+                value=_current_jargon,
                 placeholder="例：HKFRS 18、Peter Chan、ABC Holdings、CFR、香港金管局、Cap. 622...",
-                height=100,
-                help="用逗號或新行分隔。AI 會特別留意呢啲詞，識別準確度大幅提升。",
+                height=160,
+                help="用逗號或新行分隔。AI 會特別留意呢啲詞，識別準確度大幅提升。"
+                     "上面個 jargon pack expander 可以一鍵 import 行業常用詞。",
             )
         else:
             new_jargon = ""
