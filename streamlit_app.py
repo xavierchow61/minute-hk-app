@@ -25,6 +25,18 @@ def get_cached_upgrade_url(user_id: str, email: str, plan: str = "pro") -> str |
         return None
 
 
+# Export bytes are expensive (Word: python-docx; PDF: weasyprint + markdown).
+# Cache by summary content so that fragment reruns + tab switches do not regenerate.
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=200)
+def _build_docx_cached(summary_md: str) -> bytes:
+    return cloud_exporters.md_to_docx_bytes(summary_md)
+
+
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=200)
+def _build_pdf_cached(summary_md: str) -> bytes:
+    return cloud_exporters.md_to_pdf_bytes(summary_md)
+
+
 def is_pro_user(user_plan: str) -> bool:
     """判斷係咪 Pro/Team 用戶（可以用 advanced features）"""
     return user_plan in ("pro", "team")
@@ -1308,7 +1320,7 @@ with tab_new:
 
         with col_word:
             try:
-                docx_bytes = cloud_exporters.md_to_docx_bytes(st.session_state.last_summary)
+                docx_bytes = _build_docx_cached(st.session_state.last_summary)
                 st.download_button(
                     "📄 Word",
                     docx_bytes,
@@ -1322,7 +1334,7 @@ with tab_new:
         with col_pdf:
             if IS_PRO:
                 try:
-                    pdf_bytes = cloud_exporters.md_to_pdf_bytes(st.session_state.last_summary)
+                    pdf_bytes = _build_pdf_cached(st.session_state.last_summary)
                     st.download_button(
                         "📕 PDF",
                         pdf_bytes,
@@ -1561,33 +1573,57 @@ with tab_history:
                             key=f"md_{m['id']}",
                             use_container_width=True,
                         )
+                    # Word/PDF: lazy generation — only build bytes when user actually wants
+                    # to download. Previously these ran for every meeting on every render,
+                    # so opening the history tab pre-generated 50 Word + 50 PDF files.
                     with col_word:
-                        try:
-                            docx_bytes = cloud_exporters.md_to_docx_bytes(full["summary"])
-                            st.download_button(
-                                "📄 Word",
-                                docx_bytes,
-                                file_name=f"{base_name}_紀要.docx",
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                key=f"docx_{m['id']}",
-                                use_container_width=True,
-                            )
-                        except Exception:
-                            pass
-                    with col_pdf:
-                        if IS_PRO:
+                        word_ready_key = f"docx_ready_{m['id']}"
+                        if st.session_state.get(word_ready_key):
                             try:
-                                pdf_bytes = cloud_exporters.md_to_pdf_bytes(full["summary"])
                                 st.download_button(
-                                    "📕 PDF",
-                                    pdf_bytes,
-                                    file_name=f"{base_name}_紀要.pdf",
-                                    mime="application/pdf",
-                                    key=f"pdf_{m['id']}",
+                                    "⬇️ Word",
+                                    _build_docx_cached(full["summary"]),
+                                    file_name=f"{base_name}_紀要.docx",
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    key=f"docx_{m['id']}",
                                     use_container_width=True,
                                 )
                             except Exception:
                                 pass
+                        else:
+                            if st.button(
+                                "📄 Word",
+                                key=f"docx_gen_{m['id']}",
+                                use_container_width=True,
+                                help="撳一下準備 Word，再撳「⬇️ Word」下載",
+                            ):
+                                st.session_state[word_ready_key] = True
+                                st.rerun(scope="fragment")
+
+                    with col_pdf:
+                        if IS_PRO:
+                            pdf_ready_key = f"pdf_ready_{m['id']}"
+                            if st.session_state.get(pdf_ready_key):
+                                try:
+                                    st.download_button(
+                                        "⬇️ PDF",
+                                        _build_pdf_cached(full["summary"]),
+                                        file_name=f"{base_name}_紀要.pdf",
+                                        mime="application/pdf",
+                                        key=f"pdf_{m['id']}",
+                                        use_container_width=True,
+                                    )
+                                except Exception:
+                                    pass
+                            else:
+                                if st.button(
+                                    "📕 PDF",
+                                    key=f"pdf_gen_{m['id']}",
+                                    use_container_width=True,
+                                    help="撳一下準備 PDF，再撳「⬇️ PDF」下載",
+                                ):
+                                    st.session_state[pdf_ready_key] = True
+                                    st.rerun(scope="fragment")
                         else:
                             if st.button("🔒 PDF", key=f"pdf_lk_{m['id']}",
                                          use_container_width=True, help="⭐ Pro 功能"):
