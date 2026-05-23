@@ -206,7 +206,7 @@ def update_password(new_password: str) -> tuple[bool, str]:
 
 
 def exchange_recovery_code(code: str) -> tuple[bool, str]:
-    """用 password recovery URL 嘅 code 換 session，將 user 帶入「recovery mode」。
+    """用 password recovery URL 嘅 code (PKCE flow) 換 session.
 
     成功 = user 而家有臨時 session，可以 call update_password()。
     """
@@ -222,6 +222,32 @@ def exchange_recovery_code(code: str) -> tuple[bool, str]:
             st.session_state._session_attached = True
             return True, result.user.email
         return False, "Link 無效或已被使用"
+    except Exception as e:
+        msg = str(e).lower()
+        if "expired" in msg or "invalid" in msg:
+            return False, "Link 已過期或無效，請重新申請"
+        return False, f"處理失敗：{e}"
+
+
+def set_recovery_session(access_token: str, refresh_token: str) -> tuple[bool, str]:
+    """用 password recovery URL 嘅 access_token (implicit flow) 建立 session.
+
+    Supabase email 條 link click 完，default implicit flow 會 redirect 去
+    {app}?type=recovery#access_token=xxx&refresh_token=yyy
+    要 JS shim 將 hash 轉成 query，然後呢度 set_session.
+    """
+    try:
+        sb = get_supabase()
+        result = sb.auth.set_session(access_token, refresh_token or "")
+        if result and result.user:
+            st.session_state.user = {
+                "id": result.user.id,
+                "email": result.user.email,
+            }
+            st.session_state.session = result.session
+            st.session_state._session_attached = True
+            return True, result.user.email
+        return False, "Session 建立失敗"
     except Exception as e:
         msg = str(e).lower()
         if "expired" in msg or "invalid" in msg:

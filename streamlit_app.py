@@ -729,18 +729,57 @@ st.markdown("""
 
 auth.init_session()
 
+# ============ JS shim: 將 URL hash 轉做 query params ============
+# Supabase password recovery 嘅 default implicit flow 會 redirect 去
+# {app}?type=recovery#access_token=xxx&refresh_token=yyy&type=recovery&...
+# Hash fragment 服務器讀唔到, 所以要 JS 偵測 hash + reload 成 query param.
+import streamlit.components.v1 as _components
+_components.html(
+    """
+    <script>
+    (function() {
+      try {
+        const parent = window.top;
+        if (!parent || !parent.location || !parent.location.hash) return;
+        const hash = parent.location.hash.substring(1);
+        if (!hash.includes('type=recovery') && !hash.includes('access_token')) return;
+        const hashParams = new URLSearchParams(hash);
+        const url = new URL(parent.location.href);
+        // copy 所有 hash params 落 query string
+        hashParams.forEach((value, key) => {
+            url.searchParams.set(key, value);
+        });
+        url.hash = '';
+        parent.location.replace(url.toString());
+      } catch (e) {
+        console.error('Hash → query conversion failed:', e);
+      }
+    })();
+    </script>
+    """,
+    height=0,
+)
+
 # ============ Handle URL query params (Stripe redirect / password recovery) ============
 qp = st.query_params
 
-# Password recovery: 用戶 click 咗 email 條 link，URL 帶 ?type=recovery&code=xxx
-# 必須喺 logged-in check 前處理，因為 exchange_code_for_session 會建立臨時 session.
-if qp.get("type") == "recovery" and "code" in qp:
-    code_val = qp["code"]
-    st.query_params.clear()
-    ok, info = auth.exchange_recovery_code(code_val)
+# Password recovery — handle both PKCE (?code=...) and implicit (?access_token=...)
+# 兩種 flow 都 redirect 之後 type=recovery 喺 query (JS shim 已 normalize)
+if qp.get("type") == "recovery" and ("code" in qp or "access_token" in qp):
+    if "code" in qp:
+        # PKCE flow
+        code_val = qp["code"]
+        st.query_params.clear()
+        ok, info = auth.exchange_recovery_code(code_val)
+    else:
+        # Implicit flow (轉換自 hash fragment)
+        access = qp["access_token"]
+        refresh = qp.get("refresh_token", "")
+        st.query_params.clear()
+        ok, info = auth.set_recovery_session(access, refresh)
     if ok:
         st.session_state["_recovery_mode"] = True
-        st.session_state["_recovery_email"] = info  # email
+        st.session_state["_recovery_email"] = info
     else:
         st.session_state["_recovery_error"] = info
     st.rerun()
