@@ -550,14 +550,32 @@ def transcribe_only(audio_bytes: bytes, mime_type: str) -> dict:
                 ],
                 config=types.GenerateContentConfig(
                     temperature=0.1,  # 低溫度 - 唔好「創作」, 要忠實
-                    max_output_tokens=8192,
+                    max_output_tokens=32768,  # 足夠 ~1.5 小時逐字稿
                 ),
             )
         response = call_with_retry(_gen_inline, model=GEMINI_MODEL)
+
+        raw_text = response.text or ""
+        truncated = False
+        try:
+            fr = response.candidates[0].finish_reason
+            truncated = "MAX_TOKENS" in str(fr).upper()
+        except Exception:
+            pass
+
+        normalized = _normalize_diarization(raw_text)
+        if truncated:
+            normalized += (
+                "\n\n---\n\n"
+                "⚠️ **錄音太長，逐字稿可能被截斷** — Gemini 撞咗 output token 上限。"
+                "建議將錄音切短啲再 transcribe。"
+            )
+
         return {
-            "transcript": _normalize_diarization(response.text or ""),
+            "transcript": normalized,
             "model": GEMINI_MODEL,
             "method": "inline",
+            "truncated": truncated,
         }
 
     # === 大檔案：Files API upload ===
@@ -580,20 +598,38 @@ def transcribe_only(audio_bytes: bytes, mime_type: str) -> dict:
                 contents=[prompt, audio_file],
                 config=types.GenerateContentConfig(
                     temperature=0.1,
-                    max_output_tokens=8192,
+                    max_output_tokens=32768,  # 足夠 ~1.5 小時逐字稿
                 ),
             )
         response = call_with_retry(_gen_files, model=GEMINI_MODEL)
+
+        # Detect output truncation (MAX_TOKENS finish reason)
+        raw_text = response.text or ""
+        truncated = False
+        try:
+            fr = response.candidates[0].finish_reason
+            truncated = "MAX_TOKENS" in str(fr).upper()
+        except Exception:
+            pass
 
         try:
             client.files.delete(name=audio_file.name)
         except Exception:
             pass
 
+        normalized = _normalize_diarization(raw_text)
+        if truncated:
+            normalized += (
+                "\n\n---\n\n"
+                "⚠️ **錄音太長，逐字稿可能被截斷** — Gemini 撞咗 output token 上限。"
+                "建議將錄音切短啲再 transcribe。"
+            )
+
         return {
-            "transcript": _normalize_diarization(response.text or ""),
+            "transcript": normalized,
             "model": GEMINI_MODEL,
             "method": "files_api",
+            "truncated": truncated,
         }
     finally:
         tmp_path.unlink(missing_ok=True)
