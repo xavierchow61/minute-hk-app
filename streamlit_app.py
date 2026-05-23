@@ -834,8 +834,14 @@ if not auth.is_logged_in():
                     elif password != password2:
                         st.error("兩次密碼唔同")
                     elif not _check_captcha(captcha_ans):
-                        st.error(f"驗證碼錯誤。{a} {op} {b} = ?")
-                        _new_captcha()  # regen 防 bot brute force
+                        # 唔 regen — 之前 regen 但唔 rerun 令到題目偷偷換咗，
+                        # UI 仲 show 舊題，用戶答返「舊嘅正確答案」變新題嘅錯答案。
+                        # 1-digit math 只有 18 個答案，Supabase auth 本身 rate-limit
+                        # 已經夠擋 bot brute force。
+                        st.error(
+                            f"⚠️ 驗證碼錯誤。題目係 **{a} {op} {b} = ?**，"
+                            f"你答 `{captcha_ans}`。請睇清楚再試。"
+                        )
                     else:
                         # Validate invite code BEFORE signup (read-only check)
                         code_ok, code_info = db.validate_invite_code(invite_code)
