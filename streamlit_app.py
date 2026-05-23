@@ -167,19 +167,30 @@ def run_with_progress(func, *args, estimated_seconds: float = 30,
 
     while not holder["done"]:
         elapsed = time.time() - start
-        # Ease-out curve: 快爬到 70%, 慢慢爬到 95%, 永遠唔 hit 100% 直到 done
         ratio = elapsed / max(estimated_seconds, 1)
+        # Ease-out curve: 快爬到 85%, 慢慢爬到 95%, 永遠唔 hit 100% 直到 done
         if ratio <= 1.0:
-            pct = ratio * 0.85  # 0 → 85% linearly during estimated time
+            pct = ratio * 0.85
         else:
-            # 超時：85% → 95% asymptotically over additional time
             extra = ratio - 1.0
             pct = 0.85 + (0.95 - 0.85) * (1 - 0.5 ** extra)
         pct = min(0.95, pct)
-        placeholder.progress(
-            pct,
-            text=f"{label} · {int(pct * 100)}% · 已用 {int(elapsed)}s（預計 {int(estimated_seconds)}s）",
-        )
+
+        # Message: 超過 estimated 之後唔再 show 「預計 Xs」(誤導),
+        # 改 show 透明嘅 "AI 仲喺度生成緊..." + 已用時間
+        if ratio < 1.2:
+            text_msg = (
+                f"{label} · {int(pct * 100)}% · "
+                f"已用 {int(elapsed)}s（預計 {int(estimated_seconds)}s）"
+            )
+        else:
+            # 超出 20%+ estimated 時間 — 唔好顯示 stale estimate
+            text_msg = (
+                f"{label} · AI 仲喺度生成緊… "
+                f"已用 {int(elapsed)}s · 長錄音 / 多講者通常會耐啲，"
+                f"請唔好關 page"
+            )
+        placeholder.progress(pct, text=text_msg)
         time.sleep(0.4)
 
     placeholder.progress(1.0, text=f"✅ {label} · 100%")
@@ -1209,14 +1220,17 @@ with tab_new:
                     audio_bytes = uploaded.read()
 
                     if transcribe_only_mode:
-                        # === 純轉文字 mode (快約 50% - 唔做 summary) ===
-                        estimated = max(10, int(file_size_mb * 8))
+                        # === 純轉文字 mode (連 speaker diarization) ===
+                        # Diarization 令 output 變大 (~2x verbatim transcript)，
+                        # Gemini token-by-token generation 越長越慢。
+                        # Empirical: ~15s/MB + 20s overhead 比較貼近實況。
+                        estimated = 20 + int(file_size_mb * 15)
                         tr_result = run_with_progress(
                             ai.transcribe_only,
                             audio_bytes=audio_bytes,
                             mime_type=mime_type,
                             estimated_seconds=estimated,
-                            label="📋 轉文字",
+                            label="📋 轉文字 + 講者識別",
                         )
                         transcript_text = tr_result["transcript"]
 
@@ -1267,7 +1281,9 @@ with tab_new:
 
                     else:
                         # === 完整摘要 + AI 分析 mode ===
-                        estimated = max(15, int(file_size_mb * 12))
+                        # Summary mode output 較短（紀要 < 逐字稿），但 audio
+                        # 理解步驟同樣要時間。Empirical: ~12s/MB + 25s overhead.
+                        estimated = 25 + int(file_size_mb * 12)
                         result = run_with_progress(
                             ai.process_audio,
                             audio_bytes=audio_bytes,
