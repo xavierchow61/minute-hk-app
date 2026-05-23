@@ -470,6 +470,67 @@ TRANSCRIBE_ONLY_PROMPT = """請將呢段錄音逐字 transcribe 成文字稿，*
 跟住上面個 example format 輸出。"""
 
 
+def _normalize_diarization(text: str) -> str:
+    """Force-normalize speaker labels into canonical **講者 X** format.
+
+    Gemini 即使 prompt 講到要 **講者 A** + 分行，都成日 output 短 form
+    例如 "A: hello B: world" 擠喺一行。呢個 helper 用 regex 強制
+    將任何 speaker label 變返 canonical format + 每 turn 分段。
+
+    Handles:
+      A:  /  **A**:  /  Speaker A:  /  Person A:  /  講者 A:  /  **講者 A**:
+    """
+    import re
+
+    # Pattern: optional leading whitespace, optional **, optional prefix
+    # ("Speaker "/"Person "/"講者 "), single uppercase A-Z, optional **,
+    # colon, optional whitespace. Must NOT be preceded by another letter
+    # (avoid matching "AI:" or mid-word colons).
+    pattern = re.compile(
+        r"(?:(?<=^)|(?<=[\s。！？.!?,\n]))"      # at start or after whitespace/punctuation
+        r"(?:\*\*)?"                             # optional bold opening
+        r"(?:Speaker\s+|Person\s+|講者\s*)?"     # optional textual prefix
+        r"([A-Z])"                               # speaker letter (captured)
+        r"(?:\*\*)?"                             # optional bold closing
+        r"[:：]\s*"                              # colon (full-width or half) + spaces
+    )
+
+    # Split text into [pre-content, speaker1, content1, speaker2, content2, ...]
+    parts = pattern.split(text)
+    if len(parts) <= 1:
+        # No speaker labels detected — return as-is
+        return text.strip()
+
+    # Build canonical output
+    lines: list[str] = []
+    pre = parts[0].strip()
+    if pre and not pre.startswith("**👥"):
+        # Any orphan text before the first speaker label — keep at top
+        lines.append(pre)
+
+    i = 1
+    while i + 1 < len(parts):
+        speaker = parts[i]
+        content = parts[i + 1].strip()
+        if content:
+            lines.append(f"**講者 {speaker}**: {content}")
+        i += 2
+
+    body = "\n\n".join(lines)
+
+    # Prepend 與會者 header if missing
+    speakers = sorted({s for s in re.findall(r"\*\*講者\s+([A-Z])\*\*", body)})
+    if speakers and "**👥 與會者**" not in body:
+        header = (
+            "**👥 與會者**: "
+            + "、".join(f"講者 {s}" for s in speakers)
+            + f"（共 {len(speakers)} 位）"
+        )
+        body = header + "\n\n" + body
+
+    return body.strip()
+
+
 def transcribe_only(audio_bytes: bytes, mime_type: str) -> dict:
     """Transcribe audio to text WITHOUT any analysis/summary.
 
@@ -493,7 +554,11 @@ def transcribe_only(audio_bytes: bytes, mime_type: str) -> dict:
                 ),
             )
         response = call_with_retry(_gen_inline, model=GEMINI_MODEL)
-        return {"transcript": response.text, "model": GEMINI_MODEL, "method": "inline"}
+        return {
+            "transcript": _normalize_diarization(response.text or ""),
+            "model": GEMINI_MODEL,
+            "method": "inline",
+        }
 
     # === 大檔案：Files API upload ===
     ext = _ext_from_mime(mime_type)
@@ -525,7 +590,11 @@ def transcribe_only(audio_bytes: bytes, mime_type: str) -> dict:
         except Exception:
             pass
 
-        return {"transcript": response.text, "model": GEMINI_MODEL, "method": "files_api"}
+        return {
+            "transcript": _normalize_diarization(response.text or ""),
+            "model": GEMINI_MODEL,
+            "method": "files_api",
+        }
     finally:
         tmp_path.unlink(missing_ok=True)
 
