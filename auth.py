@@ -166,10 +166,64 @@ def logout():
     st.session_state._session_attached = False
 
 
-def reset_password(email: str) -> tuple[bool, str]:
+def reset_password(email: str, redirect_url: str | None = None) -> tuple[bool, str]:
+    """Send reset password email. redirect_url 需要 whitelist 喺 Supabase
+    Auth → URL Configuration → Redirect URLs。
+
+    Email 入面條 link click 之後 Supabase 會 redirect 返 {redirect_url}?code=xxx，
+    我哋自動 append type=recovery 等 app 識別到呢個 flow。
+    """
     try:
         sb = get_supabase()
-        sb.auth.reset_password_for_email(email)
-        return True, "✅ 重設密碼 link 已 send 去你 email"
+        if redirect_url:
+            sep = "&" if "?" in redirect_url else "?"
+            full_redirect = f"{redirect_url}{sep}type=recovery"
+            sb.auth.reset_password_for_email(
+                email, options={"redirect_to": full_redirect}
+            )
+        else:
+            sb.auth.reset_password_for_email(email)
+        return True, (
+            "✅ 重設密碼 link 已 send 去你 email。"
+            "請喺 1 小時內 click 條 link 設定新密碼。"
+        )
     except Exception as e:
         return False, f"失敗：{e}"
+
+
+def update_password(new_password: str) -> tuple[bool, str]:
+    """更新當前 logged-in user 嘅密碼。要求現時有 active session
+    （recovery session 都 OK — exchange_recovery_code 之後）。
+    """
+    if len(new_password) < 6:
+        return False, "密碼至少 6 位"
+    try:
+        sb = get_supabase()
+        sb.auth.update_user({"password": new_password})
+        return True, "✅ 密碼已更新！請用新密碼登入。"
+    except Exception as e:
+        return False, f"更新密碼失敗：{e}"
+
+
+def exchange_recovery_code(code: str) -> tuple[bool, str]:
+    """用 password recovery URL 嘅 code 換 session，將 user 帶入「recovery mode」。
+
+    成功 = user 而家有臨時 session，可以 call update_password()。
+    """
+    try:
+        sb = get_supabase()
+        result = sb.auth.exchange_code_for_session({"auth_code": code})
+        if result and result.session and result.user:
+            st.session_state.user = {
+                "id": result.user.id,
+                "email": result.user.email,
+            }
+            st.session_state.session = result.session
+            st.session_state._session_attached = True
+            return True, result.user.email
+        return False, "Link 無效或已被使用"
+    except Exception as e:
+        msg = str(e).lower()
+        if "expired" in msg or "invalid" in msg:
+            return False, "Link 已過期或無效，請重新申請"
+        return False, f"處理失敗：{e}"

@@ -729,14 +729,90 @@ st.markdown("""
 
 auth.init_session()
 
-# ============ Handle Stripe redirect ============
+# ============ Handle URL query params (Stripe redirect / password recovery) ============
 qp = st.query_params
+
+# Password recovery: 用戶 click 咗 email 條 link，URL 帶 ?type=recovery&code=xxx
+# 必須喺 logged-in check 前處理，因為 exchange_code_for_session 會建立臨時 session.
+if qp.get("type") == "recovery" and "code" in qp:
+    code_val = qp["code"]
+    st.query_params.clear()
+    ok, info = auth.exchange_recovery_code(code_val)
+    if ok:
+        st.session_state["_recovery_mode"] = True
+        st.session_state["_recovery_email"] = info  # email
+    else:
+        st.session_state["_recovery_error"] = info
+    st.rerun()
+
+# 已過期 / 無效 link 嘅 error
+if "_recovery_error" in st.session_state:
+    st.error(f"🔑 重設密碼 link 失敗：{st.session_state.pop('_recovery_error')}")
+
+# Stripe redirect
 if qp.get("upgrade") == "success":
     st.toast("🎉 升級成功！可能要幾分鐘 sync。", icon="✅")
     st.query_params.clear()
 elif qp.get("upgrade") == "cancel":
     st.toast("已取消升級", icon="ℹ️")
     st.query_params.clear()
+
+# ============ Recovery mode: 強制設新密碼 ============
+if st.session_state.get("_recovery_mode"):
+    _auth_l, auth_col, _auth_r = st.columns([1, 2, 1])
+    with auth_col:
+        st.markdown(
+            f"""
+            <div style='text-align:center;margin:0.5rem 0 0.8rem 0;'>
+                <img src='{LOGO_DATA_URI}' alt='Minute.hk' style='width:48px;height:48px;'/>
+                <h2 style='margin:0.4rem 0 0 0;font-size:1.4rem;'>
+                    🔑 設定新密碼
+                </h2>
+                <p style='color:#64748b;margin:0.2rem 0 0 0;font-size:0.82rem;'>
+                    為 <strong>{st.session_state.get('_recovery_email', '')}</strong> 設定新密碼
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        with st.form("recovery_password_form"):
+            new_pw = st.text_input(
+                "新密碼",
+                type="password",
+                placeholder="新密碼（至少 6 位）",
+                key="rec_new_pw",
+                label_visibility="collapsed",
+            )
+            new_pw2 = st.text_input(
+                "確認新密碼",
+                type="password",
+                placeholder="再輸入一次確認",
+                key="rec_new_pw2",
+                label_visibility="collapsed",
+            )
+            submit = st.form_submit_button(
+                "✅ 設定新密碼", type="primary", use_container_width=True
+            )
+            if submit:
+                if not new_pw or not new_pw2:
+                    st.error("請輸入兩次新密碼")
+                elif new_pw != new_pw2:
+                    st.error("兩次密碼唔同")
+                else:
+                    ok, msg = auth.update_password(new_pw)
+                    if ok:
+                        # 清 recovery state + 登出 session（強制用戶用新密碼重新登入）
+                        st.session_state.pop("_recovery_mode", None)
+                        st.session_state.pop("_recovery_email", None)
+                        auth.logout()
+                        st.success(msg)
+                        st.balloons()
+                        st.toast("✅ 密碼已更新，請用新密碼登入", icon="🔑")
+                        time.sleep(2)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+    st.stop()
 
 # ============ Auth UI (if not logged in) ============
 if not auth.is_logged_in():
@@ -884,7 +960,12 @@ if not auth.is_logged_in():
                                       placeholder="你註冊嘅 email", label_visibility="collapsed")
                 submit = st.form_submit_button("📧 寄重設密碼 link", use_container_width=True)
                 if submit and email:
-                    ok, msg = auth.reset_password(email)
+                    # 傳當前 app URL 做 redirect — Supabase email 條 link click 完
+                    # 會 redirect 返呢度 + ?type=recovery&code=xxx
+                    _app_url = st.secrets.get(
+                        "APP_URL", "https://minute-hk-app.streamlit.app"
+                    )
+                    ok, msg = auth.reset_password(email, redirect_url=_app_url)
                     (st.success if ok else st.error)(msg)
 
         st.markdown(
