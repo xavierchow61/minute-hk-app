@@ -13,6 +13,7 @@ import cloud_stripe
 import dashboard
 import db
 import jargon_packs
+import telegram_integration as telegram_send
 
 
 @st.cache_data(ttl=1800, show_spinner=False)  # 30 分鐘 cache
@@ -1575,6 +1576,35 @@ with tab_new:
                              help="⭐ 升級 Pro 解鎖 PDF 匯出"):
                     show_pro_locked_toast("PDF 匯出")
 
+        # === 📤 Send to Telegram ===
+        _tg_chat = (user_settings.get("telegram_chat_id") or "").strip()
+        if telegram_send.is_configured():
+            if _tg_chat:
+                if st.button(
+                    "📤 Send 紀要落 Telegram",
+                    key="btn_send_telegram_main",
+                    use_container_width=True,
+                    help=f"推俾你嘅 Telegram chat ({_tg_chat[:6]}...)",
+                ):
+                    _meeting_label = st.session_state.get("last_meeting_name", "會議")
+                    ok, msg = telegram_send.send_summary(
+                        _tg_chat,
+                        st.session_state.last_summary,
+                        header=f"📝 Minute.hk · {_meeting_label}",
+                    )
+                    if ok:
+                        st.toast(f"✅ {msg}", icon="📤")
+                    else:
+                        st.error(f"Telegram send 失敗：{msg}")
+            else:
+                if st.button(
+                    "📤 Send 落 Telegram（要先連接）",
+                    key="btn_send_telegram_unconnected",
+                    use_container_width=True,
+                    help="去 ⚙️ 設定 → 🔗 連接 Telegram",
+                ):
+                    st.toast("ℹ️ 去 ⚙️ 設定 → 🔗 連接 Telegram 先", icon="🔗")
+
         # === 🤖 更多 AI 分析（次要 action，預設摺埋）===
         # 已生成過結果就自動展開，等用戶見到 button 可以再 generate
         _ai_used = bool(
@@ -2328,6 +2358,86 @@ with tab_settings:
                 st.rerun(scope="fragment")
             except Exception as e:
                 st.error(f"儲存失敗：{e}")
+
+    # === 🔗 連接 Telegram (outside form — own DB update path) ===
+    st.markdown("---")
+    st.markdown("##### 🔗 連接 Telegram（推 meeting summary 落你 chat）")
+    if not telegram_send.is_configured():
+        st.caption("⚠️ Admin 仲未設 bot token，呢個功能暫時 unavailable。")
+    else:
+        _current_chat_id = (current_settings.get("telegram_chat_id") or "").strip()
+        if _current_chat_id:
+            # 已連接 — show status + test/disconnect
+            st.success(f"✅ 已連接 · chat_id: `{_current_chat_id}`")
+            tg_col_test, tg_col_unlink = st.columns([2, 1])
+            with tg_col_test:
+                if st.button(
+                    "🧪 試 send 測試 message",
+                    key="tg_test",
+                    use_container_width=True,
+                ):
+                    ok, msg = telegram_send.send_message(
+                        _current_chat_id,
+                        "👋 Hello from Minute.hk！\n你嘅 Telegram 已成功連接。",
+                    )
+                    if ok:
+                        st.toast(f"✅ {msg}", icon="📤")
+                    else:
+                        st.error(msg)
+            with tg_col_unlink:
+                if st.button(
+                    "🔌 解除連接",
+                    key="tg_unlink",
+                    use_container_width=True,
+                ):
+                    try:
+                        db.update_user_settings(user["id"], telegram_chat_id="")
+                        st.toast("已解除連接 Telegram", icon="🔌")
+                        st.rerun(scope="fragment")
+                    except Exception as e:
+                        st.error(f"解除失敗：{e}")
+        else:
+            # 未連接 — 教用戶攞 chat_id
+            with st.expander("📲 點樣攞我嘅 Telegram chat ID？", expanded=True):
+                st.markdown(
+                    """
+                    1. 開 Telegram，搜尋 **@userinfobot**（呢個係 public utility bot）
+                    2. 撳 **START** 或者 send 「`/start`」
+                    3. Bot 會 reply 一個 message 包含 `Id: 123456789`
+                    4. 將個數字 (例如 `123456789`) copy 落下面
+                    """
+                )
+            with st.form("telegram_connect_form"):
+                new_chat_id = st.text_input(
+                    "你嘅 Telegram chat ID（純數字）",
+                    placeholder="例: 123456789",
+                    key="tg_chat_id_input",
+                )
+                tg_connect = st.form_submit_button(
+                    "🔗 連接", type="primary", use_container_width=True
+                )
+                if tg_connect:
+                    cleaned = (new_chat_id or "").strip()
+                    if not cleaned.lstrip("-").isdigit():
+                        st.error("Chat ID 應該係純數字（@userinfobot 會畀你個 numeric ID）")
+                    else:
+                        # 先 test send 確認 ID 有效
+                        ok, msg = telegram_send.send_message(
+                            cleaned,
+                            "🎉 連接成功！\n之後 Minute.hk 嘅 meeting summary "
+                            "可以一鍵推到呢個 chat。",
+                        )
+                        if ok:
+                            try:
+                                db.update_user_settings(
+                                    user["id"], telegram_chat_id=cleaned
+                                )
+                                st.toast("✅ Telegram 已連接！", icon="🔗")
+                                st.rerun(scope="fragment")
+                            except Exception as e:
+                                st.error(f"儲存失敗：{e}")
+                        else:
+                            st.error(f"連接測試失敗：{msg}")
 
     # 帳號資料 section 隱藏 — Email + Plan 已喺 top user bar 顯示
 

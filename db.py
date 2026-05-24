@@ -227,11 +227,11 @@ SUMMARY_LENGTHS = {
 
 @st.cache_data(ttl=60, show_spinner=False)
 def get_user_settings(user_id: str) -> dict:
-    """攞用戶設定（jargon、industry、length 等） (cached 60s)"""
+    """攞用戶設定（jargon、industry、length、telegram_chat_id 等） (cached 60s)"""
     sb = get_supabase()
     result = (
         sb.table("user_plans")
-        .select("company_name, industry, jargon, summary_length")
+        .select("company_name, industry, jargon, summary_length, telegram_chat_id")
         .eq("user_id", user_id)
         .limit(1)
         .execute()
@@ -243,12 +243,14 @@ def get_user_settings(user_id: str) -> dict:
             "industry": row.get("industry") or "generic",
             "jargon": row.get("jargon") or "",
             "summary_length": row.get("summary_length") or "medium",
+            "telegram_chat_id": row.get("telegram_chat_id") or "",
         }
     return {
         "company_name": "",
         "industry": "generic",
         "jargon": "",
         "summary_length": "medium",
+        "telegram_chat_id": "",
     }
 
 
@@ -311,8 +313,8 @@ def claim_invite_code_and_upgrade(code: str, user_id: str = None, target_plan: s
 
 
 def update_user_settings(user_id: str, **kwargs) -> None:
-    """Update user 設定。允許 fields: company_name, industry, jargon, summary_length"""
-    allowed = {"company_name", "industry", "jargon", "summary_length"}
+    """Update user 設定。允許 fields: company_name, industry, jargon, summary_length, telegram_chat_id"""
+    allowed = {"company_name", "industry", "jargon", "summary_length", "telegram_chat_id"}
     update_data = {k: v for k, v in kwargs.items() if k in allowed}
     if not update_data:
         return
