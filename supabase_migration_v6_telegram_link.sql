@@ -25,9 +25,13 @@ CREATE INDEX IF NOT EXISTS idx_telegram_link_codes_unused
 ALTER TABLE telegram_link_codes ENABLE ROW LEVEL SECURITY;
 
 -- Users can read / insert their own codes
+-- DROP+CREATE pattern 令 migration 可以重複 run 唔出錯 (PostgreSQL 無
+-- "CREATE POLICY IF NOT EXISTS" 嘅 syntax)
+DROP POLICY IF EXISTS "Users see own link codes" ON telegram_link_codes;
 CREATE POLICY "Users see own link codes" ON telegram_link_codes
   FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users insert own link codes" ON telegram_link_codes;
 CREATE POLICY "Users insert own link codes" ON telegram_link_codes
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
