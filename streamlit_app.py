@@ -2455,14 +2455,13 @@ with tab_settings:
                     except Exception as e:
                         st.error(f"解除失敗：{e}")
         else:
-            # 未連接 — 用 /start <code> 一鍵連接流程
-            _bot_username = st.secrets.get("TELEGRAM_BOT_USERNAME", "")
-            if not _bot_username:
-                st.warning(
-                    "⚠️ Admin 仲未喺 secrets 設 `TELEGRAM_BOT_USERNAME`，"
-                    "暫時用唔到 1-click 連接。"
-                )
-            else:
+            # 未連接 — 如果 admin 設咗 TELEGRAM_BOT_USERNAME 就 show 1-click;
+            # 否則靜悄悄 fallback 落 manual paste expander (default-expanded)
+            try:
+                _bot_username = (st.secrets.get("TELEGRAM_BOT_USERNAME") or "").strip()
+            except Exception:
+                _bot_username = ""
+            if _bot_username:
                 # Generate code on first show, 或撳「重新生成」之後
                 _code_key = "_tg_link_code"
                 _code_time_key = "_tg_link_code_time"
@@ -2503,12 +2502,20 @@ with tab_settings:
                             st.session_state.pop(_code_time_key, None)
                             st.rerun(scope="fragment")
 
-            # Fallback: 手動 paste chat ID（如果 link code flow 唔 work / admin 未設 bot username）
-            with st.expander("⚙️ 進階：手動 paste chat ID", expanded=False):
+            # Manual paste chat ID flow
+            # - 如果上面 1-click (link code) flow 有得用 → 呢個係「進階」fallback，collapsed
+            # - 如果未設 TELEGRAM_BOT_USERNAME → 呢個係 primary flow，預設 expanded
+            _has_1click = bool(_bot_username)
+            with st.expander(
+                "⚙️ 進階：手動 paste chat ID" if _has_1click else "📲 連接 Telegram",
+                expanded=not _has_1click,
+            ):
                 st.caption(
-                    "如果上面 1-click 唔 work，可以手動：\n"
-                    "1. Telegram 搜尋 @userinfobot → /start → 攞 numeric ID\n"
-                    "2. Paste 落下面"
+                    "1. 開 Telegram，搜尋 **@userinfobot**\n"
+                    "2. 撳 START 或 send `/start`\n"
+                    "3. Bot reply 個 message 包含 `Id: 123456789` — copy 個數字\n"
+                    "4. 仲要：搜尋你個 Minute.hk bot → 撳 START（一次性）\n"
+                    "5. Paste 個 ID 落下面"
                 )
                 with st.form("telegram_connect_manual_form"):
                     new_chat_id = st.text_input(
