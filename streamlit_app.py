@@ -995,18 +995,72 @@ if not auth.is_logged_in():
                                 # 不 regen captcha - signup 失敗（例如 email 已註冊）唔好為難用戶
 
         with tab_reset:
-            with st.form("reset_form"):
-                email = st.text_input("Email", key="rp_email",
-                                      placeholder="你註冊嘅 email", label_visibility="collapsed")
-                submit = st.form_submit_button("📧 寄重設密碼 link", use_container_width=True)
-                if submit and email:
-                    # 傳當前 app URL 做 redirect — Supabase email 條 link click 完
-                    # 會 redirect 返呢度 + ?type=recovery&code=xxx
-                    _app_url = st.secrets.get(
-                        "APP_URL", "https://minute-hk-app.streamlit.app"
+            # 新 flow: 6 位 OTP code (取代 magic link — 完全避開 URL hash 問題)
+            # Step 1: 用戶輸 email → app send 6 位 code
+            # Step 2: 用戶 paste code → verify → 即時登入
+            # Step 3: 登入後喺 ⚙️設定 → 🔑 改密碼 改新嘅
+            st.caption(
+                "📧 Email 收 6 位驗證碼登入，登入後喺 ⚙️ 設定 → 🔑 改密碼"
+            )
+
+            _otp_sent_email = st.session_state.get("_otp_sent_to")
+
+            if not _otp_sent_email:
+                # Step 1: enter email
+                with st.form("otp_email_form"):
+                    email_otp = st.text_input(
+                        "Email",
+                        key="rp_email",
+                        placeholder="你註冊嘅 email",
+                        label_visibility="collapsed",
                     )
-                    ok, msg = auth.reset_password(email, redirect_url=_app_url)
-                    (st.success if ok else st.error)(msg)
+                    submit_otp_email = st.form_submit_button(
+                        "📧 寄 6 位驗證碼", use_container_width=True
+                    )
+                    if submit_otp_email and email_otp:
+                        ok, msg = auth.send_otp_code(email_otp)
+                        if ok:
+                            st.session_state["_otp_sent_to"] = email_otp.strip()
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+            else:
+                # Step 2: enter OTP code
+                st.info(
+                    f"📨 驗證碼已 send 去 **{_otp_sent_email}** · 5 分鐘內有效"
+                )
+                with st.form("otp_verify_form"):
+                    otp_code = st.text_input(
+                        "6 位驗證碼",
+                        max_chars=6,
+                        placeholder="例：123456",
+                        key="rp_otp_code",
+                        label_visibility="collapsed",
+                    )
+                    verify_otp_btn = st.form_submit_button(
+                        "✅ 驗證 + 登入", type="primary", use_container_width=True
+                    )
+                    if verify_otp_btn:
+                        ok, msg = auth.verify_otp_code(_otp_sent_email, otp_code)
+                        if ok:
+                            st.session_state.pop("_otp_sent_to", None)
+                            st.session_state["_post_login_msg"] = (
+                                "🔑 登入成功！記得去「⚙️ 設定」嘅 🔑 改密碼 改返新嘅。"
+                            )
+                            st.success(msg)
+                            st.balloons()
+                            time.sleep(1.2)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+                if st.button(
+                    "🔄 用另一個 email / 重新申請",
+                    key="rp_restart",
+                    use_container_width=True,
+                ):
+                    st.session_state.pop("_otp_sent_to", None)
+                    st.rerun()
 
         st.markdown(
             "<p style='text-align:center;font-size:0.78rem;color:#94a3b8;margin-top:1rem;'>"
@@ -1019,6 +1073,10 @@ if not auth.is_logged_in():
 
 # ============ Logged in - Main App ============
 user = auth.get_user()
+
+# OTP login 後 surfaces 「記得改密碼」嘅 prompt
+if "_post_login_msg" in st.session_state:
+    st.info(st.session_state.pop("_post_login_msg"))
 plan = db.get_user_plan(user["id"])
 plan_emoji = {"free": "🆓", "pro": "⭐", "team": "👥"}.get(plan, "🆓")
 
@@ -2438,6 +2496,46 @@ with tab_settings:
                                 st.error(f"儲存失敗：{e}")
                         else:
                             st.error(f"連接測試失敗：{msg}")
+
+    # === 🔑 改密碼 (logged-in user, Path A) ===
+    st.markdown("---")
+    st.markdown("##### 🔑 改密碼")
+    with st.form("change_password_form"):
+        cp_old = st.text_input(
+            "舊密碼",
+            type="password",
+            placeholder="而家用緊嘅密碼",
+            key="cp_old_pw",
+        )
+        cp_new = st.text_input(
+            "新密碼",
+            type="password",
+            placeholder="新密碼（至少 6 位）",
+            key="cp_new_pw",
+        )
+        cp_new2 = st.text_input(
+            "確認新密碼",
+            type="password",
+            placeholder="再輸一次新密碼",
+            key="cp_new_pw2",
+        )
+        cp_submit = st.form_submit_button(
+            "💾 更新密碼", use_container_width=True
+        )
+        if cp_submit:
+            if not cp_old or not cp_new or not cp_new2:
+                st.error("請填齊三欄")
+            elif cp_new != cp_new2:
+                st.error("兩次新密碼唔同")
+            elif len(cp_new) < 6:
+                st.error("新密碼至少 6 位")
+            else:
+                ok, msg = auth.change_password(user["email"], cp_old, cp_new)
+                if ok:
+                    st.success(msg)
+                    st.toast("✅ 密碼已更新", icon="🔑")
+                else:
+                    st.error(msg)
 
     # 帳號資料 section 隱藏 — Email + Plan 已喺 top user bar 顯示
 

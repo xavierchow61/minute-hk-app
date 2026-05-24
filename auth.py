@@ -229,6 +229,85 @@ def exchange_recovery_code(code: str) -> tuple[bool, str]:
         return False, f"處理失敗：{e}"
 
 
+def send_otp_code(email: str) -> tuple[bool, str]:
+    """Send 6-digit email OTP code for password recovery login.
+
+    呢個係 magic link 嘅 alternative — 完全避開 URL hash fragment 同
+    Supabase URL Configuration 嘅麻煩。用戶 copy 個 code 返 app 輸入,
+    verify_otp_code() 即時 log 佢入嚟, 之後可以喺 Settings 改密碼。
+    """
+    if "@" not in (email or ""):
+        return False, "Email 格式錯誤"
+    try:
+        sb = get_supabase()
+        sb.auth.sign_in_with_otp({
+            "email": email,
+            "options": {"should_create_user": False},  # 唔自動 create new account
+        })
+        return True, "✅ 6 位驗證碼已 send 去你 email（5 分鐘內有效）"
+    except Exception as e:
+        msg = str(e).lower()
+        if "rate" in msg or "limit" in msg:
+            return False, "Email rate limit 超過咗，請等 1 小時再試"
+        if "not found" in msg:
+            return False, "呢個 email 未註冊"
+        return False, f"失敗：{e}"
+
+
+def verify_otp_code(email: str, token: str) -> tuple[bool, str]:
+    """Verify OTP code 同 log 用戶入嚟。"""
+    if not token or not token.strip():
+        return False, "請輸 6 位驗證碼"
+    try:
+        sb = get_supabase()
+        result = sb.auth.verify_otp({
+            "email": email,
+            "token": token.strip(),
+            "type": "email",
+        })
+        if result and result.user and result.session:
+            st.session_state.user = {
+                "id": result.user.id,
+                "email": result.user.email,
+            }
+            st.session_state.session = result.session
+            st.session_state._session_attached = True
+            return True, "✅ 驗證成功，已登入"
+        return False, "驗證失敗"
+    except Exception as e:
+        msg = str(e).lower()
+        if "expired" in msg:
+            return False, "驗證碼已過期（5 分鐘有效），請重新申請"
+        if "invalid" in msg or "incorrect" in msg:
+            return False, "驗證碼錯誤"
+        return False, f"驗證失敗：{e}"
+
+
+def change_password(email: str, old_password: str, new_password: str) -> tuple[bool, str]:
+    """For 已登入用戶喺 Settings 改密碼。先用舊密碼 re-verify，再 update。"""
+    if len(new_password) < 6:
+        return False, "新密碼至少 6 位"
+    if old_password == new_password:
+        return False, "新密碼同舊密碼相同"
+    try:
+        sb = get_supabase()
+        # Verify old password 嘅方法：用佢嚟 re-login
+        result = sb.auth.sign_in_with_password({
+            "email": email,
+            "password": old_password,
+        })
+        if not (result and result.user):
+            return False, "舊密碼錯誤"
+        # Update 新密碼
+        sb.auth.update_user({"password": new_password})
+        return True, "✅ 密碼已更新"
+    except Exception as e:
+        msg = str(e).lower()
+        if "invalid" in msg or "credentials" in msg:
+            return False, "舊密碼錯誤"
+        return False, f"更新失敗：{e}"
+
+
 def set_recovery_session(access_token: str, refresh_token: str) -> tuple[bool, str]:
     """用 password recovery URL 嘅 access_token (implicit flow) 建立 session.
 
