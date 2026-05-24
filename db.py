@@ -413,9 +413,13 @@ def get_summaries_for_wordcloud(user_id: str) -> str:
     return "\n\n".join(m.get("summary", "") for m in (result.data or []))
 
 
-@st.cache_data(ttl=20, show_spinner=False)
+@st.cache_data(ttl=5, show_spinner=False)
 def get_monthly_usage_seconds(user_id: str) -> float:
-    """Returns total seconds processed this calendar month (cached 20s).
+    """Returns total seconds processed this calendar month (cached 5s).
+
+    短 TTL = web app 用戶可以快啲 see Telegram bot 嘅 changes (因為 Edge
+    Function 唔可以直接 invalidate Python in-memory cache, 只有 TTL 過期
+    先見到變化). 5s 對 DB load 影響微 (每用戶 ~12 queries / min).
 
     ⚠️ **故意唔 filter deleted_at**：呢個係 quota 計算，soft-deleted
     嘅 meeting 一樣要計入用戶今個月用咗幾多 (防止刷額度 -- delete 完
@@ -435,11 +439,13 @@ def get_monthly_usage_seconds(user_id: str) -> float:
     return sum(m.get("duration_seconds", 0) or 0 for m in (result.data or []))
 
 
-@st.cache_data(ttl=20, show_spinner=False)
+@st.cache_data(ttl=5, show_spinner=False)
 def get_daily_usage_seconds(user_id: str) -> float:
-    """Returns total seconds processed today (cached 20s).
+    """Returns total seconds processed today (cached 5s).
 
-    同 get_monthly_usage_seconds：故意計埋 soft-deleted (見上面註解).
+    同 get_monthly_usage_seconds：故意計埋 soft-deleted (見上面註解);
+    TTL 短啲 (5s) 為咗 Telegram bot save meeting 之後 web app 能夠
+    快啲 see 到 counter 更新.
     """
     sb = get_supabase()
     now = datetime.now(timezone.utc)
