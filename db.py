@@ -312,6 +312,30 @@ def claim_invite_code_and_upgrade(code: str, user_id: str = None, target_plan: s
         return False, f"系統錯誤：{e}"
 
 
+def create_telegram_link_code(user_id: str, ttl_minutes: int = 10) -> str:
+    """生成一條一次性 Telegram 連接碼，10 分鐘有效。
+
+    User 撳「連接 Telegram」嘅 button → 我哋 generate 個 6 位 code → 插落
+    telegram_link_codes table → 用戶 click https://t.me/Bot?start=<code>
+    → bot webhook (Edge Function) 用個 code 揾返 user_id → 設 chat_id 落
+    user_plans。
+    """
+    import secrets as _secrets
+    import string as _string
+    code = "".join(
+        _secrets.choice(_string.ascii_uppercase + _string.digits)
+        for _ in range(6)
+    )
+    expires = datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes)
+    sb = get_supabase()
+    sb.table("telegram_link_codes").insert({
+        "code": code,
+        "user_id": user_id,
+        "expires_at": expires.isoformat(),
+    }).execute()
+    return code
+
+
 def update_user_settings(user_id: str, **kwargs) -> None:
     """Update user 設定。允許 fields: company_name, industry, jargon, summary_length, telegram_chat_id"""
     allowed = {"company_name", "industry", "jargon", "summary_length", "telegram_chat_id"}

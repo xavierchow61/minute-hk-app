@@ -2455,47 +2455,91 @@ with tab_settings:
                     except Exception as e:
                         st.error(f"解除失敗：{e}")
         else:
-            # 未連接 — 教用戶攞 chat_id
-            with st.expander("📲 點樣攞我嘅 Telegram chat ID？", expanded=True):
-                st.markdown(
-                    """
-                    1. 開 Telegram，搜尋 **@userinfobot**（呢個係 public utility bot）
-                    2. 撳 **START** 或者 send 「`/start`」
-                    3. Bot 會 reply 一個 message 包含 `Id: 123456789`
-                    4. 將個數字 (例如 `123456789`) copy 落下面
-                    """
+            # 未連接 — 用 /start <code> 一鍵連接流程
+            _bot_username = st.secrets.get("TELEGRAM_BOT_USERNAME", "")
+            if not _bot_username:
+                st.warning(
+                    "⚠️ Admin 仲未喺 secrets 設 `TELEGRAM_BOT_USERNAME`，"
+                    "暫時用唔到 1-click 連接。"
                 )
-            with st.form("telegram_connect_form"):
-                new_chat_id = st.text_input(
-                    "你嘅 Telegram chat ID（純數字）",
-                    placeholder="例: 123456789",
-                    key="tg_chat_id_input",
-                )
-                tg_connect = st.form_submit_button(
-                    "🔗 連接", type="primary", use_container_width=True
-                )
-                if tg_connect:
-                    cleaned = (new_chat_id or "").strip()
-                    if not cleaned.lstrip("-").isdigit():
-                        st.error("Chat ID 應該係純數字（@userinfobot 會畀你個 numeric ID）")
-                    else:
-                        # 先 test send 確認 ID 有效
-                        ok, msg = telegram_send.send_message(
-                            cleaned,
-                            "🎉 連接成功！\n之後 Minute.hk 嘅 meeting summary "
-                            "可以一鍵推到呢個 chat。",
+            else:
+                # Generate code on first show, 或撳「重新生成」之後
+                _code_key = "_tg_link_code"
+                _code_time_key = "_tg_link_code_time"
+                _expired = False
+                if _code_key in st.session_state and _code_time_key in st.session_state:
+                    import time as _t
+                    if _t.time() - st.session_state[_code_time_key] > 600:
+                        _expired = True
+                if _code_key not in st.session_state or _expired:
+                    try:
+                        st.session_state[_code_key] = db.create_telegram_link_code(
+                            user["id"]
                         )
-                        if ok:
-                            try:
-                                db.update_user_settings(
-                                    user["id"], telegram_chat_id=cleaned
-                                )
-                                st.toast("✅ Telegram 已連接！", icon="🔗")
-                                st.rerun(scope="fragment")
-                            except Exception as e:
-                                st.error(f"儲存失敗：{e}")
+                        import time as _t
+                        st.session_state[_code_time_key] = _t.time()
+                    except Exception as e:
+                        st.error(f"生成連接碼失敗：{e}")
+                        st.session_state.pop(_code_key, None)
+
+                _code = st.session_state.get(_code_key)
+                if _code:
+                    _bot_url = f"https://t.me/{_bot_username}?start={_code}"
+                    st.markdown(
+                        "**👉 1-click 連接（推薦）**\n\n"
+                        f"撳下面個 link，喺 Telegram 撳 **START** 即時連接：\n\n"
+                        f"### 🔗 [t.me/{_bot_username}?start={_code}]({_bot_url})\n\n"
+                        f"連接碼：`{_code}`（10 分鐘有效）"
+                    )
+                    tg_refresh_col1, tg_refresh_col2 = st.columns([1, 1])
+                    with tg_refresh_col1:
+                        if st.button("🔄 我已連接，refresh", key="tg_refresh_link", use_container_width=True):
+                            st.session_state.pop(_code_key, None)
+                            st.session_state.pop(_code_time_key, None)
+                            st.rerun(scope="fragment")
+                    with tg_refresh_col2:
+                        if st.button("♻️ 重新生成連接碼", key="tg_regen_code", use_container_width=True):
+                            st.session_state.pop(_code_key, None)
+                            st.session_state.pop(_code_time_key, None)
+                            st.rerun(scope="fragment")
+
+            # Fallback: 手動 paste chat ID（如果 link code flow 唔 work / admin 未設 bot username）
+            with st.expander("⚙️ 進階：手動 paste chat ID", expanded=False):
+                st.caption(
+                    "如果上面 1-click 唔 work，可以手動：\n"
+                    "1. Telegram 搜尋 @userinfobot → /start → 攞 numeric ID\n"
+                    "2. Paste 落下面"
+                )
+                with st.form("telegram_connect_manual_form"):
+                    new_chat_id = st.text_input(
+                        "你嘅 Telegram chat ID（純數字）",
+                        placeholder="例: 123456789",
+                        key="tg_chat_id_input",
+                    )
+                    tg_connect = st.form_submit_button(
+                        "🔗 手動連接", use_container_width=True
+                    )
+                    if tg_connect:
+                        cleaned = (new_chat_id or "").strip()
+                        if not cleaned.lstrip("-").isdigit():
+                            st.error("Chat ID 應該係純數字")
                         else:
-                            st.error(f"連接測試失敗：{msg}")
+                            ok, msg = telegram_send.send_message(
+                                cleaned,
+                                "🎉 連接成功！之後 Minute.hk 嘅 summary "
+                                "可以一鍵推過嚟。",
+                            )
+                            if ok:
+                                try:
+                                    db.update_user_settings(
+                                        user["id"], telegram_chat_id=cleaned
+                                    )
+                                    st.toast("✅ 已連接", icon="🔗")
+                                    st.rerun(scope="fragment")
+                                except Exception as e:
+                                    st.error(f"儲存失敗：{e}")
+                            else:
+                                st.error(f"連接測試失敗：{msg}")
 
     # === 🔑 改密碼 (logged-in user, Path A) ===
     st.markdown("---")
