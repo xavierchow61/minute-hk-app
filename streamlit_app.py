@@ -1699,14 +1699,15 @@ if IS_UAT:
             background: transparent !important;
           }}
 
-          /* Top user bar inline-styled wrapper (background:white) */
+          /* Top user bar inline-styled wrapper (background:white)
+             — keep it nearly transparent so the animated bg shines through */
           div[style*="background:white"], div[style*="background: white"] {{
-            background: {_glass_strong} !important;
-            backdrop-filter: blur(20px) saturate(160%) !important;
-            -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+            background: transparent !important;
+            backdrop-filter: blur(6px) !important;
+            -webkit-backdrop-filter: blur(6px) !important;
             border: 1px solid {_glass_border} !important;
             border-radius: 16px !important;
-            box-shadow: {_glass_shadow} !important;
+            box-shadow: none !important;
           }}
 
           /* File uploader dropzone */
