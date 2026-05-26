@@ -1317,10 +1317,10 @@ IS_PRO = is_pro_user(plan)
 PALETTES = [
     {
         "key": "deep_tech_blue",
-        "name": "Deep Tech Blue",
-        "sub_brand": "Minute-HK Technology",
-        "tagline": "Innovative Solutions for the Future",
-        "cta": "Get Started",
+        "name": "深科技藍",
+        "sub_brand": "Minute-HK · 科技",
+        "tagline": "為未來而設的創新方案",
+        "cta": "立即開始",
         "card_bg": "#FFFFFF",
         "card_text": "#1A2B4C",
         "tagline_color": "#1A2B4C",
@@ -1332,10 +1332,10 @@ PALETTES = [
     },
     {
         "key": "minty_fresh",
-        "name": "Minty Fresh",
-        "sub_brand": "Minute-HK Wellness",
-        "tagline": "Natural Growth and Harmony",
-        "cta": "Explore Now",
+        "name": "薄荷清新",
+        "sub_brand": "Minute-HK · 健康生活",
+        "tagline": "自然成長 · 和諧共存",
+        "cta": "立即探索",
         "card_bg": "#F8F9FA",
         "card_text": "#00B8AD",
         "tagline_color": "#555555",
@@ -1347,10 +1347,10 @@ PALETTES = [
     },
     {
         "key": "midnight_violet",
-        "name": "Midnight Violet",
-        "sub_brand": "Minute-HK Nightlife",
-        "tagline": "Exclusive Events and Access",
-        "cta": "Book Access",
+        "name": "午夜紫",
+        "sub_brand": "Minute-HK · 夜生活",
+        "tagline": "尊享獨家活動 · 限定通行",
+        "cta": "立即預約",
         "card_bg": "#000000",
         "card_text": "#FFFFFF",
         "tagline_color": "#CCCCCC",
@@ -1850,7 +1850,7 @@ if IS_UAT:
             pointer-events: none;
           }}
         </style>
-        <div class="uat-glass-indicator">✨ UAT Glass</div>
+        <div class="uat-glass-indicator">✨ 測試版玻璃主題</div>
         """,
         unsafe_allow_html=True,
     )
@@ -2795,262 +2795,424 @@ with tab_settings:
     current_settings = db.get_user_settings(user["id"])
 
     st.markdown(
-        '<div style="margin-bottom:1.2rem;">'
+        '<div style="margin-bottom:1rem;">'
         '<h2 style="margin:0;">⚙️ 個人化設定</h2>'
         '</div>',
         unsafe_allow_html=True,
     )
 
-    # Free 用戶嘅 Pro teaser (pack picker for Pro users 現在內嵌喺 form 入面)
-    if not IS_PRO:
-        with st.expander("🔒 行業 jargon pack（Pro 功能）", expanded=False):
-            st.info(
-                "⭐ Pro 用戶可以一鍵套用 9 個行業嘅常用術語 pack —— "
-                "會計 / 法律 / 醫療 / 銷售 / 教育 / 地產 / 金融 / 顧問 / 科技。"
-                "升級 Pro 解鎖。"
-            )
-
-    # Lookup table for pack metadata (Pro 用戶 form 入面用到)
+    # Lookup table for pack metadata (Pro form 入面用到)
     packs = jargon_packs.list_packs()
     pack_lookup = {k: p for k, p in packs}
     pack_keys = [k for k, _ in packs]
 
-    with st.form("settings_form"):
-        # === Row 1: 公司名稱 + 行業類型（並排）===
-        col_a, col_b = st.columns(2)
+    sub_tab_basic, sub_tab_jargon, sub_tab_tg, sub_tab_pw, sub_tab_palette = st.tabs([
+        "🏢 基本設定",
+        "📚 行業常用術語",
+        "🔗 連接 Telegram",
+        "🔑 改密碼",
+        "🎨 品牌主題",
+    ])
 
-        with col_a:
-            new_company = st.text_input(
-                "🏢 公司名稱",
-                value=current_settings.get("company_name", ""),
-                placeholder="例：陳氏會計師樓",
-            )
+    # ============ Sub-tab 1: 基本設定 (公司名 / 行業 / 摘要長度) ============
+    with sub_tab_basic:
+        with st.form("basic_settings_form"):
+            col_a, col_b = st.columns(2)
+            with col_a:
+                new_company = st.text_input(
+                    "🏢 公司名稱",
+                    value=current_settings.get("company_name", ""),
+                    placeholder="例：陳氏會計師樓",
+                )
+            with col_b:
+                if IS_PRO:
+                    industry_keys = list(db.INDUSTRIES.keys())
+                    try:
+                        ind_idx = industry_keys.index(current_settings.get("industry", "generic"))
+                    except ValueError:
+                        ind_idx = 0
+                    new_industry = st.selectbox(
+                        "🎯 行業類型",
+                        options=industry_keys,
+                        format_func=lambda k: db.INDUSTRIES[k],
+                        index=ind_idx,
+                    )
+                else:
+                    new_industry = "generic"
+                    st.selectbox(
+                        "🔒 行業類型（Pro 專用）",
+                        options=["🏢 一般商務"],
+                        index=0,
+                        disabled=True,
+                        help="⭐ Pro 用戶可揀會計/法律/醫療/銷售等",
+                    )
 
-        with col_b:
             if IS_PRO:
-                industry_keys = list(db.INDUSTRIES.keys())
+                length_keys = list(db.SUMMARY_LENGTHS.keys())
                 try:
-                    ind_idx = industry_keys.index(current_settings.get("industry", "generic"))
+                    len_idx = length_keys.index(current_settings.get("summary_length", "medium"))
                 except ValueError:
-                    ind_idx = 0
-                new_industry = st.selectbox(
-                    "🎯 行業類型",
-                    options=industry_keys,
-                    format_func=lambda k: db.INDUSTRIES[k],
-                    index=ind_idx,
+                    len_idx = 1
+                new_length = st.selectbox(
+                    "📏 預設摘要長度",
+                    options=length_keys,
+                    format_func=lambda k: db.SUMMARY_LENGTHS[k],
+                    index=len_idx,
+                    help="新會議嘅 default。每次處理時都可以另揀。",
                 )
             else:
-                new_industry = "generic"
+                new_length = "medium"
                 st.selectbox(
-                    "🔒 行業類型 (Pro)",
-                    options=["🏢 一般商務"],
+                    "🔒 預設摘要長度（Pro 專用）",
+                    options=["中（標準格式）"],
                     index=0,
                     disabled=True,
-                    help="⭐ Pro 用戶可揀會計/法律/醫療/銷售等",
+                    help="⭐ Pro 用戶可揀短/中/長",
                 )
 
-        # === Row 2: 預設摘要長度（Pro 至可揀）===
-        if IS_PRO:
-            length_keys = list(db.SUMMARY_LENGTHS.keys())
-            try:
-                len_idx = length_keys.index(current_settings.get("summary_length", "medium"))
-            except ValueError:
-                len_idx = 1
-            new_length = st.selectbox(
-                "📏 預設摘要長度",
-                options=length_keys,
-                format_func=lambda k: db.SUMMARY_LENGTHS[k],
-                index=len_idx,
-                help="新會議嘅 default。每次處理時都可以另揀。",
+            basic_submitted = st.form_submit_button(
+                "💾 儲存基本設定",
+                type="primary",
+                use_container_width=True,
+            )
+            if basic_submitted:
+                try:
+                    db.update_user_settings(
+                        user["id"],
+                        company_name=new_company.strip(),
+                        industry=new_industry,
+                        summary_length=new_length,
+                    )
+                    st.success("✅ 基本設定已儲存！")
+                    st.rerun(scope="fragment")
+                except Exception as e:
+                    st.error(f"儲存失敗：{e}")
+
+    # ============ Sub-tab 2: 行業常用術語 (jargon 字典 + pack) ============
+    with sub_tab_jargon:
+        if not IS_PRO:
+            st.info(
+                "⭐ Pro 用戶可以一鍵套用 9 個行業嘅常用術語 pack —— "
+                "會計 / 法律 / 醫療 / 銷售 / 教育 / 地產 / 金融 / 顧問 / 科技。\n\n"
+                "升級 Pro 即可解鎖。"
+            )
+            st.text_area(
+                "🔒 自定術語字典（Pro 專用）",
+                value="",
+                placeholder="⭐ 升級 Pro 解鎖 — 加入你公司專屬詞彙、客戶名、人名",
+                height=120,
+                disabled=True,
+                help="⭐ Pro 用戶可加術語字典，大幅提升 AI 識別準確度",
             )
         else:
-            new_length = "medium"
-            st.selectbox(
-                "🔒 預設摘要長度 (Pro)",
-                options=["中（標準格式）"],
-                index=0,
-                disabled=True,
-                help="⭐ Pro 用戶可揀短/中/長",
-            )
-
-        # === Row 3: Jargon textarea (left) + Pack picker (right) ===
-        if IS_PRO:
             _current_jargon = current_settings.get("jargon", "") or ""
             _jargon_count = jargon_packs.count_terms(_current_jargon)
 
-            # Textarea 同 pack picker 並排：textarea 較闊、picker 較窄
-            jcol_main, jcol_pack = st.columns([3, 1])
-            with jcol_main:
-                new_jargon = st.text_area(
-                    f"📚 自定術語字典 · {_jargon_count} 個詞",
-                    value=_current_jargon,
-                    placeholder="例：HKFRS 18、Peter Chan、ABC Holdings、CFR、香港金管局、Cap. 622...",
-                    height=180,
-                    help="用逗號或新行分隔。AI 會特別留意呢啲詞，識別準確度大幅提升。"
-                         "右邊「套用 pack」可以一鍵 import 行業常用詞。",
-                )
-            with jcol_pack:
-                st.markdown(
-                    "<div style='font-size:0.875rem;font-weight:600;"
-                    "color:#262730;margin-bottom:0.25rem;'>📦 行業 pack</div>",
-                    unsafe_allow_html=True,
-                )
-                pack_select = st.selectbox(
-                    "揀行業",
-                    options=pack_keys,
-                    format_func=lambda k: f"{pack_lookup[k]['label']} ({len(pack_lookup[k]['terms'])})",
-                    key="jargon_pack_select",
-                    label_visibility="collapsed",
-                )
-                apply_pack = st.form_submit_button(
-                    "✅ 套用 pack",
+            with st.form("jargon_settings_form"):
+                jcol_main, jcol_pack = st.columns([3, 1])
+                with jcol_main:
+                    new_jargon = st.text_area(
+                        f"📚 自定術語字典 · {_jargon_count} 個詞",
+                        value=_current_jargon,
+                        placeholder="例：HKFRS 18、Peter Chan、ABC Holdings、CFR、香港金管局、Cap. 622...",
+                        height=200,
+                        help="用逗號或新行分隔。AI 會特別留意呢啲詞，識別準確度大幅提升。"
+                             "右邊「套用 pack」可以一鍵 import 行業常用詞。",
+                    )
+                with jcol_pack:
+                    st.markdown(
+                        "<div style='font-size:0.875rem;font-weight:600;"
+                        "margin-bottom:0.25rem;'>📦 行業 pack</div>",
+                        unsafe_allow_html=True,
+                    )
+                    pack_select = st.selectbox(
+                        "揀行業",
+                        options=pack_keys,
+                        format_func=lambda k: f"{pack_lookup[k]['label']} ({len(pack_lookup[k]['terms'])})",
+                        key="jargon_pack_select",
+                        label_visibility="collapsed",
+                    )
+                    apply_pack = st.form_submit_button(
+                        "✅ 套用 pack",
+                        use_container_width=True,
+                        help="會 append 落左邊嘅字典，dedupe 重複詞",
+                    )
+
+                save_jargon = st.form_submit_button(
+                    "💾 儲存術語字典",
+                    type="primary",
                     use_container_width=True,
-                    help="會 append 落左邊嘅 jargon，dedupe，順手 save 埋其他設定",
                 )
+
+                if apply_pack and pack_select:
+                    pack = pack_lookup[pack_select]
+                    jargon_now = (new_jargon or "").strip()
+                    before = jargon_packs.count_terms(jargon_now)
+                    merged = jargon_packs.merge_jargon(jargon_now, pack["terms"])
+                    after = jargon_packs.count_terms(merged)
+                    added = after - before
+                    try:
+                        db.update_user_settings(user["id"], jargon=merged)
+                        if added > 0:
+                            st.toast(
+                                f"✅ {pack['label']} 已套用 · 加咗 {added} 個新詞",
+                                icon="📦",
+                            )
+                        else:
+                            st.toast(
+                                f"ℹ️ {pack['label']} 嘅詞已經全部喺度",
+                                icon="📦",
+                            )
+                        st.rerun(scope="fragment")
+                    except Exception as e:
+                        st.error(f"套用失敗：{e}")
+                elif save_jargon:
+                    try:
+                        db.update_user_settings(
+                            user["id"], jargon=new_jargon.strip()
+                        )
+                        st.success("✅ 術語字典已儲存！")
+                        st.rerun(scope="fragment")
+                    except Exception as e:
+                        st.error(f"儲存失敗：{e}")
+
+    # ============ Sub-tab 3: 連接 Telegram ============
+    with sub_tab_tg:
+        st.caption("連接你嘅 Telegram，AI 整理完會議紀要可以一鍵推送到你嘅 chat。")
+        if not telegram_send.is_configured():
+            st.caption("⚠️ 管理員仲未設定 bot token，呢個功能暫時未開放。")
         else:
-            new_jargon = ""
-            pack_select = None
-            apply_pack = False
-            st.text_area(
-                "🔒 自定術語字典 (Pro)",
-                value="",
-                placeholder="⭐ 升級 Pro 解鎖 — 加入你公司專屬 jargon、客戶名、人名",
-                height=100,
-                disabled=True,
-                help="⭐ Pro 用戶可加 jargon dictionary 大幅提升 AI 識別準確度",
+            _current_chat_id = (current_settings.get("telegram_chat_id") or "").strip()
+            if _current_chat_id:
+                st.success(f"✅ 已連接 · chat_id: `{_current_chat_id}`")
+                tg_col_test, tg_col_unlink = st.columns([2, 1])
+                with tg_col_test:
+                    if st.button(
+                        "🧪 試發送測試訊息",
+                        key="tg_test",
+                        use_container_width=True,
+                    ):
+                        ok, msg = telegram_send.send_message(
+                            _current_chat_id,
+                            "👋 你好！\n你嘅 Telegram 已成功連接到 Minute.hk。",
+                        )
+                        if ok:
+                            st.toast(f"✅ {msg}", icon="📤")
+                        else:
+                            st.error(msg)
+                with tg_col_unlink:
+                    if st.button(
+                        "🔌 解除連接",
+                        key="tg_unlink",
+                        use_container_width=True,
+                    ):
+                        try:
+                            db.update_user_settings(user["id"], telegram_chat_id="")
+                            st.toast("已解除連接 Telegram", icon="🔌")
+                            st.rerun(scope="fragment")
+                        except Exception as e:
+                            st.error(f"解除失敗：{e}")
+            else:
+                try:
+                    _bot_username = (st.secrets.get("TELEGRAM_BOT_USERNAME") or "").strip()
+                except Exception:
+                    _bot_username = ""
+                if _bot_username:
+                    _code_key = "_tg_link_code"
+                    _code_time_key = "_tg_link_code_time"
+                    _expired = False
+                    if _code_key in st.session_state and _code_time_key in st.session_state:
+                        import time as _t
+                        if _t.time() - st.session_state[_code_time_key] > 600:
+                            _expired = True
+                    if _code_key not in st.session_state or _expired:
+                        try:
+                            st.session_state[_code_key] = db.create_telegram_link_code(
+                                user["id"]
+                            )
+                            import time as _t
+                            st.session_state[_code_time_key] = _t.time()
+                        except Exception as e:
+                            st.error(f"生成連接碼失敗：{e}")
+                            st.session_state.pop(_code_key, None)
+
+                    _code = st.session_state.get(_code_key)
+                    if _code:
+                        _bot_url = f"https://t.me/{_bot_username}?start={_code}"
+                        st.markdown(
+                            "**👉 一鍵連接（推薦）**\n\n"
+                            f"撳下面個連結，喺 Telegram 按 **START** 即時連接：\n\n"
+                            f"### 🔗 [t.me/{_bot_username}?start={_code}]({_bot_url})\n\n"
+                            f"連接碼：`{_code}`（10 分鐘內有效）"
+                        )
+                        tg_refresh_col1, tg_refresh_col2 = st.columns([1, 1])
+                        with tg_refresh_col1:
+                            if st.button("🔄 我已連接，重新整理", key="tg_refresh_link", use_container_width=True):
+                                st.session_state.pop(_code_key, None)
+                                st.session_state.pop(_code_time_key, None)
+                                st.rerun(scope="fragment")
+                        with tg_refresh_col2:
+                            if st.button("♻️ 重新生成連接碼", key="tg_regen_code", use_container_width=True):
+                                st.session_state.pop(_code_key, None)
+                                st.session_state.pop(_code_time_key, None)
+                                st.rerun(scope="fragment")
+
+                _has_1click = bool(_bot_username)
+                with st.expander(
+                    "⚙️ 進階：手動貼上 chat ID" if _has_1click else "📲 連接 Telegram",
+                    expanded=not _has_1click,
+                ):
+                    st.caption(
+                        "1. 開 Telegram，搜尋 **@userinfobot**\n"
+                        "2. 按 START 或輸入 `/start`\n"
+                        "3. Bot 回覆訊息會包含 `Id: 123456789` — 複製個數字\n"
+                        "4. 仲要：搜尋你個 Minute.hk bot → 按 START（一次性）\n"
+                        "5. 貼上個 ID 落下面"
+                    )
+                    with st.form("telegram_connect_manual_form"):
+                        new_chat_id = st.text_input(
+                            "你嘅 Telegram chat ID（純數字）",
+                            placeholder="例: 123456789",
+                            key="tg_chat_id_input",
+                        )
+                        tg_connect = st.form_submit_button(
+                            "🔗 手動連接", use_container_width=True
+                        )
+                        if tg_connect:
+                            cleaned = (new_chat_id or "").strip()
+                            if not cleaned.lstrip("-").isdigit():
+                                st.error("Chat ID 應該係純數字")
+                            else:
+                                ok, msg = telegram_send.send_message(
+                                    cleaned,
+                                    "🎉 連接成功！之後 Minute.hk 嘅紀要可以一鍵推送過嚟。",
+                                )
+                                if ok:
+                                    try:
+                                        db.update_user_settings(
+                                            user["id"], telegram_chat_id=cleaned
+                                        )
+                                        st.toast("✅ 已連接", icon="🔗")
+                                        st.rerun(scope="fragment")
+                                    except Exception as e:
+                                        st.error(f"儲存失敗：{e}")
+                                else:
+                                    st.error(f"連接測試失敗：{msg}")
+
+    # ============ Sub-tab 4: 改密碼 ============
+    with sub_tab_pw:
+        st.caption("輸入舊密碼同新密碼，更新你嘅登入密碼。")
+        with st.form("change_password_form"):
+            cp_old = st.text_input(
+                "舊密碼",
+                type="password",
+                placeholder="而家用緊嘅密碼",
+                key="cp_old_pw",
             )
+            cp_new = st.text_input(
+                "新密碼",
+                type="password",
+                placeholder="新密碼（至少 6 位）",
+                key="cp_new_pw",
+            )
+            cp_new2 = st.text_input(
+                "確認新密碼",
+                type="password",
+                placeholder="再輸入一次新密碼",
+                key="cp_new_pw2",
+            )
+            cp_submit = st.form_submit_button(
+                "💾 更新密碼", type="primary", use_container_width=True
+            )
+            if cp_submit:
+                if not cp_old or not cp_new or not cp_new2:
+                    st.error("請填齊三欄")
+                elif cp_new != cp_new2:
+                    st.error("兩次新密碼唔同")
+                elif len(cp_new) < 6:
+                    st.error("新密碼至少 6 位")
+                else:
+                    ok, msg = auth.change_password(user["email"], cp_old, cp_new)
+                    if ok:
+                        st.success(msg)
+                        st.toast("✅ 密碼已更新", icon="🔑")
+                    else:
+                        st.error(msg)
 
-        st.markdown("<div style='margin: 1rem 0;'></div>", unsafe_allow_html=True)
-
-        # === Save button ===
-        submitted = st.form_submit_button(
-            "💾 儲存設定",
-            type="primary",
-            use_container_width=True,
+    # ============ Sub-tab 5: 品牌主題 ============
+    with sub_tab_palette:
+        _cur_choice = st.session_state.get("palette_choice")
+        _cur_name = next((p["name"] for p in PALETTES if p["key"] == _cur_choice), None)
+        st.caption(
+            f"目前主題：**{_cur_name}**" if _cur_choice
+            else "未揀主題（用預設藍青色）— 揀一個下面嘅色板即時 re-skin 成個 app"
         )
 
-        # === Handle which submit button was clicked ===
-        # 兩個 button 同時喺 form 入面，一次 submit 只有一個 return True
-        if apply_pack and pack_select:
-            pack = pack_lookup[pack_select]
-            jargon_now = (new_jargon or "").strip()
-            before = jargon_packs.count_terms(jargon_now)
-            merged = jargon_packs.merge_jargon(jargon_now, pack["terms"])
-            after = jargon_packs.count_terms(merged)
-            added = after - before
-            try:
-                # Save merged jargon + 順手 save 其他 form fields 唔好 lose 用戶 typing
-                db.update_user_settings(
-                    user["id"],
-                    company_name=new_company.strip(),
-                    industry=new_industry,
-                    jargon=merged,
-                    summary_length=new_length,
+        _pal_cols = st.columns(3, gap="medium")
+        for _i, _pal in enumerate(PALETTES):
+            with _pal_cols[_i]:
+                _selected = (_cur_choice == _pal["key"])
+                _border = "3px solid #06b6d4" if _selected else "1px solid #e2e8f0"
+                _swatches_html = "".join(
+                    f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">'
+                    f'<div style="width:32px;height:32px;border-radius:8px;background:{_hex};'
+                    f'border:1px solid rgba(0,0,0,0.08);"></div>'
+                    f'<div style="font-size:0.62rem;color:#94a3b8;font-family:monospace;">{_hex}</div>'
+                    f'</div>'
+                    for _hex in _pal["swatches"]
                 )
-                if added > 0:
-                    st.toast(
-                        f"✅ {pack['label']} 已套用 · 加咗 {added} 個新詞",
-                        icon="📦",
-                    )
-                else:
-                    st.toast(
-                        f"ℹ️ {pack['label']} 嘅詞已經全部喺度",
-                        icon="📦",
-                    )
-                st.rerun(scope="fragment")
-            except Exception as e:
-                st.error(f"套用失敗：{e}")
-        elif submitted:
-            try:
-                db.update_user_settings(
-                    user["id"],
-                    company_name=new_company.strip(),
-                    industry=new_industry,
-                    jargon=new_jargon.strip(),
-                    summary_length=new_length,
+                st.markdown(
+                    f"""
+                    <div style="border:{_border};border-radius:16px;padding:18px;
+                                background:#ffffff;box-shadow:0 4px 16px rgba(15,23,42,0.04);">
+                      <div style="font-size:0.7rem;color:#64748b;font-weight:600;
+                                  letter-spacing:0.04em;margin-bottom:6px;">
+                        {_pal["name"]} · {_pal["vibe"]}
+                      </div>
+                      <div style="background:{_pal["card_bg"]};border-radius:12px;padding:22px 16px;
+                                  text-align:center;margin-bottom:14px;
+                                  border:1px solid rgba(0,0,0,0.06);">
+                        <div style="font-size:1.25rem;font-weight:800;color:{_pal["card_text"]};
+                                    margin-bottom:6px;line-height:1.2;">
+                          {_pal["sub_brand"]}
+                        </div>
+                        <div style="font-size:0.78rem;color:{_pal["tagline_color"]};margin-bottom:14px;">
+                          {_pal["tagline"]}
+                        </div>
+                        <div style="display:flex;align-items:center;justify-content:center;gap:10px;">
+                          <span style="background:{_pal["btn_bg"]};color:{_pal["btn_text"]};
+                                      padding:8px 16px;border-radius:999px;font-size:0.78rem;
+                                      font-weight:700;display:inline-block;">
+                            {_pal["cta"]}
+                          </span>
+                          <span style="font-size:1.4rem;">{_pal["accent_icon"]}</span>
+                        </div>
+                      </div>
+                      <div style="font-size:0.68rem;color:#94a3b8;font-weight:600;margin-bottom:6px;">
+                        色票詳情
+                      </div>
+                      <div style="display:flex;justify-content:space-between;gap:6px;">
+                        {_swatches_html}
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
                 )
-                st.success("✅ 設定已儲存！下次處理會議時生效。")
-                st.rerun(scope="fragment")
-            except Exception as e:
-                st.error(f"儲存失敗：{e}")
+                _btn_label = "✅ 已揀" if _selected else f"揀 {_pal['name']}"
+                if st.button(
+                    _btn_label,
+                    key=f"pick_palette_{_pal['key']}",
+                    use_container_width=True,
+                    type="primary" if _selected else "secondary",
+                    disabled=_selected,
+                ):
+                    st.session_state.palette_choice = _pal["key"]
+                    st.toast(f"🎨 已揀「{_pal['name']}」主題", icon="✅")
+                    st.rerun()
 
-    # 帳號資料 section 隱藏 — Email + Plan 已喺 top user bar 顯示
-
-    # ============ 🎨 Brand Palette Picker ============
-    st.markdown("---")
-    st.markdown("##### 🎨 Brand Palette")
-    _cur_choice = st.session_state.get("palette_choice")
-    _cur_name = next((p["name"] for p in PALETTES if p["key"] == _cur_choice), None)
-    st.caption(
-        f"目前主題：**{_cur_name}**" if _cur_choice
-        else "未揀主題（用預設 cyan）— 揀一個 palette 即時 re-skin 成個 app"
-    )
-
-    _pal_cols = st.columns(3, gap="medium")
-    for _i, _pal in enumerate(PALETTES):
-        with _pal_cols[_i]:
-            _selected = (_cur_choice == _pal["key"])
-            _border = "3px solid #06b6d4" if _selected else "1px solid #e2e8f0"
-            _swatches_html = "".join(
-                f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">'
-                f'<div style="width:32px;height:32px;border-radius:8px;background:{_hex};'
-                f'border:1px solid rgba(0,0,0,0.08);"></div>'
-                f'<div style="font-size:0.62rem;color:#94a3b8;font-family:monospace;">{_hex}</div>'
-                f'</div>'
-                for _hex in _pal["swatches"]
-            )
-            st.markdown(
-                f"""
-                <div style="border:{_border};border-radius:16px;padding:18px;
-                            background:#ffffff;box-shadow:0 4px 16px rgba(15,23,42,0.04);">
-                  <div style="font-size:0.7rem;color:#64748b;font-weight:600;
-                              letter-spacing:0.04em;text-transform:uppercase;margin-bottom:6px;">
-                    {_pal["name"]} · {_pal["vibe"]}
-                  </div>
-                  <div style="background:{_pal["card_bg"]};border-radius:12px;padding:22px 16px;
-                              text-align:center;margin-bottom:14px;
-                              border:1px solid rgba(0,0,0,0.06);">
-                    <div style="font-size:1.25rem;font-weight:800;color:{_pal["card_text"]};
-                                margin-bottom:6px;line-height:1.2;">
-                      {_pal["sub_brand"]}
-                    </div>
-                    <div style="font-size:0.78rem;color:{_pal["tagline_color"]};margin-bottom:14px;">
-                      {_pal["tagline"]}
-                    </div>
-                    <div style="display:flex;align-items:center;justify-content:center;gap:10px;">
-                      <span style="background:{_pal["btn_bg"]};color:{_pal["btn_text"]};
-                                  padding:8px 16px;border-radius:999px;font-size:0.78rem;
-                                  font-weight:700;display:inline-block;">
-                        {_pal["cta"]}
-                      </span>
-                      <span style="font-size:1.4rem;">{_pal["accent_icon"]}</span>
-                    </div>
-                  </div>
-                  <div style="font-size:0.68rem;color:#94a3b8;font-weight:600;margin-bottom:6px;">
-                    Color Palette Details
-                  </div>
-                  <div style="display:flex;justify-content:space-between;gap:6px;">
-                    {_swatches_html}
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            _btn_label = "✅ 已揀" if _selected else f"揀 {_pal['name']}"
-            if st.button(
-                _btn_label,
-                key=f"pick_palette_{_pal['key']}",
-                use_container_width=True,
-                type="primary" if _selected else "secondary",
-                disabled=_selected,
-            ):
-                st.session_state.palette_choice = _pal["key"]
-                st.toast(f"🎨 已揀 {_pal['name']} palette", icon="✅")
+        if _cur_choice:
+            if st.button("🔄 重置為預設主題（藍青色）", key="reset_palette"):
+                st.session_state.palette_choice = None
                 st.rerun()
-
-    if _cur_choice:
-        if st.button("🔄 重置為預設主題 (cyan)", key="reset_palette"):
-            st.session_state.palette_choice = None
-            st.rerun()
 
   _render_settings_tab()
