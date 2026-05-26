@@ -3,6 +3,7 @@ import random
 import threading
 import time
 import streamlit as st
+import streamlit.components.v1 as _components
 
 import ai
 import auth
