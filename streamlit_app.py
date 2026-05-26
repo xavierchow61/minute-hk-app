@@ -1491,6 +1491,135 @@ user_settings = db.get_user_settings(user["id"])
 # Pro user check (used throughout)
 IS_PRO = is_pro_user(plan)
 
+# ============ Color Palette Picker (Stitch design) ============
+PALETTES = [
+    {
+        "key": "deep_tech_blue",
+        "name": "Deep Tech Blue",
+        "sub_brand": "Minute-HK Technology",
+        "tagline": "Innovative Solutions for the Future",
+        "cta": "Get Started",
+        "card_bg": "#FFFFFF",
+        "card_text": "#1A2B4C",
+        "tagline_color": "#1A2B4C",
+        "btn_bg": "#0055FF",
+        "btn_text": "#FFFFFF",
+        "accent_icon": "💻",
+        "swatches": ["#0055FF", "#1A2B4C", "#FFFFFF", "#F0F2F5"],
+        "vibe": "專業 / 企業",
+    },
+    {
+        "key": "minty_fresh",
+        "name": "Minty Fresh",
+        "sub_brand": "Minute-HK Wellness",
+        "tagline": "Natural Growth and Harmony",
+        "cta": "Explore Now",
+        "card_bg": "#F8F9FA",
+        "card_text": "#00B8AD",
+        "tagline_color": "#555555",
+        "btn_bg": "#00B8AD",
+        "btn_text": "#FFFFFF",
+        "accent_icon": "🌿",
+        "swatches": ["#A8B8CF", "#00B8AD", "#F8F9FA", "#777777"],
+        "vibe": "輕鬆 / 自然",
+    },
+    {
+        "key": "midnight_violet",
+        "name": "Midnight Violet",
+        "sub_brand": "Minute-HK Nightlife",
+        "tagline": "Exclusive Events and Access",
+        "cta": "Book Access",
+        "card_bg": "#000000",
+        "card_text": "#FFFFFF",
+        "tagline_color": "#CCCCCC",
+        "btn_bg": "#673AB7",
+        "btn_text": "#FFFFFF",
+        "accent_icon": "✨",
+        "swatches": ["#9C27B0", "#673AB7", "#FFFFFF", "#000000"],
+        "vibe": "高級 / 夜場",
+    },
+]
+
+if "palette_choice" not in st.session_state:
+    st.session_state.palette_choice = None
+
+_chosen = st.session_state.palette_choice
+_chosen_name = next((p["name"] for p in PALETTES if p["key"] == _chosen), None)
+
+with st.expander(
+    f"🎨 Brand Palette Picker · 目前：{_chosen_name or '未揀'}" if _chosen
+    else "🎨 Brand Palette Proposals — 揀一個你最鍾意嘅 (click to expand)",
+    expanded=(_chosen is None),
+):
+    st.caption("Context: Minute-HK Branding Options — 揀你最 fit 嘅色調 direction")
+    _pal_cols = st.columns(3, gap="medium")
+    for _i, _pal in enumerate(PALETTES):
+        with _pal_cols[_i]:
+            _selected = (_chosen == _pal["key"])
+            _border = "3px solid #06b6d4" if _selected else "1px solid #e2e8f0"
+            _swatches_html = "".join(
+                f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">'
+                f'<div style="width:32px;height:32px;border-radius:8px;background:{_hex};'
+                f'border:1px solid rgba(0,0,0,0.08);"></div>'
+                f'<div style="font-size:0.62rem;color:#94a3b8;font-family:monospace;">{_hex}</div>'
+                f'</div>'
+                for _hex in _pal["swatches"]
+            )
+            st.markdown(
+                f"""
+                <div style="border:{_border};border-radius:16px;padding:18px;
+                            background:#ffffff;box-shadow:0 4px 16px rgba(15,23,42,0.04);
+                            transition:transform 0.15s ease;">
+                  <div style="font-size:0.7rem;color:#64748b;font-weight:600;
+                              letter-spacing:0.04em;text-transform:uppercase;margin-bottom:6px;">
+                    {_pal["name"]} · {_pal["vibe"]}
+                  </div>
+                  <div style="background:{_pal["card_bg"]};border-radius:12px;padding:22px 16px;
+                              text-align:center;margin-bottom:14px;
+                              border:1px solid rgba(0,0,0,0.06);">
+                    <div style="font-size:1.25rem;font-weight:800;color:{_pal["card_text"]};
+                                margin-bottom:6px;line-height:1.2;">
+                      {_pal["sub_brand"]}
+                    </div>
+                    <div style="font-size:0.78rem;color:{_pal["tagline_color"]};margin-bottom:14px;">
+                      {_pal["tagline"]}
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:center;gap:10px;">
+                      <span style="background:{_pal["btn_bg"]};color:{_pal["btn_text"]};
+                                  padding:8px 16px;border-radius:999px;font-size:0.78rem;
+                                  font-weight:700;display:inline-block;">
+                        {_pal["cta"]}
+                      </span>
+                      <span style="font-size:1.4rem;">{_pal["accent_icon"]}</span>
+                    </div>
+                  </div>
+                  <div style="font-size:0.68rem;color:#94a3b8;font-weight:600;margin-bottom:6px;">
+                    Color Palette Details
+                  </div>
+                  <div style="display:flex;justify-content:space-between;gap:6px;">
+                    {_swatches_html}
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            _btn_label = "✅ 已揀" if _selected else f"揀 {_pal['name']}"
+            if st.button(
+                _btn_label,
+                key=f"pick_palette_{_pal['key']}",
+                use_container_width=True,
+                type="primary" if _selected else "secondary",
+                disabled=_selected,
+            ):
+                st.session_state.palette_choice = _pal["key"]
+                st.toast(f"🎨 已揀 {_pal['name']} palette", icon="✅")
+                st.rerun()
+
+    if _chosen:
+        if st.button("🔄 重置選擇", key="reset_palette"):
+            st.session_state.palette_choice = None
+            st.rerun()
+
 # Main content tabs
 tab_new, tab_history, tab_dashboard, tab_settings = st.tabs([
     "🎙️ 新會議", "📚 過往會議", "📊 Dashboard", "⚙️ 設定"
