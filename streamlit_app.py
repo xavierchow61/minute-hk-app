@@ -1624,6 +1624,236 @@ if _chosen in _THEME_VARS:
         unsafe_allow_html=True,
     )
 
+# ============ UAT-only Glassmorphism Theme (Testing mode visual upgrade) ============
+if IS_UAT:
+    _primary_rgb_glass = "6, 182, 212"
+    _secondary_rgb_glass = "168, 85, 247"
+    _is_dark_palette = False
+    if _chosen in _THEME_VARS:
+        _primary_rgb_glass = _THEME_VARS[_chosen]["primary_rgb"]
+        _secondary_rgb_map = {
+            "deep_tech_blue": "26, 43, 76",
+            "minty_fresh": "0, 137, 123",
+            "midnight_violet": "103, 58, 183",
+        }
+        _secondary_rgb_glass = _secondary_rgb_map.get(_chosen, "168, 85, 247")
+        _is_dark_palette = _THEME_VARS[_chosen]["is_dark"]
+
+    if _is_dark_palette:
+        _glass_bg = "rgba(20, 20, 30, 0.55)"
+        _glass_border = "rgba(255, 255, 255, 0.10)"
+        _glass_shadow = "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)"
+        _glass_strong = "rgba(20, 20, 30, 0.72)"
+        _glass_input_bg = "rgba(255,255,255,0.05)"
+    else:
+        _glass_bg = "rgba(255, 255, 255, 0.78)"
+        _glass_border = "rgba(255, 255, 255, 0.55)"
+        _glass_shadow = "0 8px 32px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.7)"
+        _glass_strong = "rgba(255, 255, 255, 0.92)"
+        _glass_input_bg = "rgba(255, 255, 255, 0.6)"
+
+    st.markdown(
+        f"""
+        <style>
+          /* ====== Animated floating glow blobs ====== */
+          .stApp::before {{
+            content: ""; position: fixed; top: -12%; right: -12%;
+            width: 620px; height: 620px;
+            background: radial-gradient(circle, rgba({_primary_rgb_glass}, 0.28) 0%, transparent 70%);
+            border-radius: 50%; z-index: 0; pointer-events: none;
+            animation: floatBlobA 18s ease-in-out infinite;
+            filter: blur(40px);
+          }}
+          .stApp::after {{
+            content: ""; position: fixed; bottom: -14%; left: -10%;
+            width: 540px; height: 540px;
+            background: radial-gradient(circle, rgba({_secondary_rgb_glass}, 0.22) 0%, transparent 70%);
+            border-radius: 50%; z-index: 0; pointer-events: none;
+            animation: floatBlobB 22s ease-in-out infinite;
+            filter: blur(40px);
+          }}
+          @keyframes floatBlobA {{
+            0%, 100% {{ transform: translate(0, 0) scale(1); }}
+            50%      {{ transform: translate(-40px, 50px) scale(1.08); }}
+          }}
+          @keyframes floatBlobB {{
+            0%, 100% {{ transform: translate(0, 0) scale(1); }}
+            50%      {{ transform: translate(50px, -40px) scale(1.1); }}
+          }}
+
+          /* Make content sit above blobs */
+          .main .block-container {{ position: relative; z-index: 1; }}
+
+          /* ====== Glassmorphism on major surfaces ====== */
+          /* Expander */
+          div[data-testid="stExpander"] {{
+            background: {_glass_bg} !important;
+            backdrop-filter: blur(20px) saturate(160%) !important;
+            -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+            border: 1px solid {_glass_border} !important;
+            border-radius: 16px !important;
+            box-shadow: {_glass_shadow} !important;
+            overflow: hidden;
+          }}
+          div[data-testid="stExpander"] details {{
+            background: transparent !important;
+          }}
+
+          /* Top user bar inline-styled wrapper (background:white) */
+          div[style*="background:white"], div[style*="background: white"] {{
+            background: {_glass_strong} !important;
+            backdrop-filter: blur(20px) saturate(160%) !important;
+            -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+            border: 1px solid {_glass_border} !important;
+            border-radius: 16px !important;
+            box-shadow: {_glass_shadow} !important;
+          }}
+
+          /* File uploader dropzone */
+          section[data-testid="stFileUploaderDropzone"] {{
+            background: {_glass_bg} !important;
+            backdrop-filter: blur(16px) !important;
+            -webkit-backdrop-filter: blur(16px) !important;
+            border: 1.5px dashed {_glass_border} !important;
+            border-radius: 14px !important;
+          }}
+
+          /* Alerts */
+          div[data-testid="stAlert"] {{
+            background: {_glass_bg} !important;
+            backdrop-filter: blur(16px) !important;
+            -webkit-backdrop-filter: blur(16px) !important;
+            border: 1px solid {_glass_border} !important;
+            border-radius: 14px !important;
+            box-shadow: {_glass_shadow} !important;
+          }}
+
+          /* Tabs list pill */
+          .stTabs [data-baseweb="tab-list"] {{
+            background: {_glass_bg} !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border: 1px solid {_glass_border} !important;
+            border-radius: 14px !important;
+            padding: 4px !important;
+            gap: 4px;
+          }}
+          .stTabs [data-baseweb="tab"] {{
+            border-radius: 10px !important;
+            padding: 6px 14px !important;
+            transition: all 0.2s ease;
+          }}
+          .stTabs [aria-selected="true"] {{
+            background: rgba({_primary_rgb_glass}, 0.18) !important;
+            box-shadow: 0 2px 8px rgba({_primary_rgb_glass}, 0.18);
+          }}
+
+          /* Forms */
+          [data-testid="stForm"] {{
+            background: {_glass_bg} !important;
+            backdrop-filter: blur(18px) !important;
+            -webkit-backdrop-filter: blur(18px) !important;
+            border: 1px solid {_glass_border} !important;
+            border-radius: 18px !important;
+            padding: 20px !important;
+            box-shadow: {_glass_shadow} !important;
+          }}
+
+          /* Popover button + content */
+          div[data-testid="stPopover"] > div > button,
+          div[data-baseweb="popover"] {{
+            background: {_glass_strong} !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border: 1px solid {_glass_border} !important;
+            border-radius: 12px !important;
+          }}
+
+          /* Secondary buttons (non-primary) */
+          .stButton button:not([kind="primary"]):not([data-testid="baseButton-primary"]),
+          .stDownloadButton button {{
+            background: {_glass_strong} !important;
+            backdrop-filter: blur(12px) !important;
+            -webkit-backdrop-filter: blur(12px) !important;
+            border: 1px solid {_glass_border} !important;
+            border-radius: 12px !important;
+            transition: all 0.18s ease;
+          }}
+          .stButton button:hover {{
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba({_primary_rgb_glass}, 0.18);
+          }}
+
+          /* Primary buttons gain glow */
+          .stButton button[kind="primary"],
+          .stButton button[data-testid="baseButton-primary"],
+          .stFormSubmitButton button[kind="primaryFormSubmit"] {{
+            border-radius: 12px !important;
+            box-shadow:
+              0 6px 24px rgba({_primary_rgb_glass}, 0.35),
+              inset 0 1px 0 rgba(255,255,255,0.25) !important;
+          }}
+
+          /* Inputs */
+          .stTextInput input, .stTextArea textarea,
+          [data-baseweb="textarea"] textarea, [data-baseweb="input"] input,
+          .stSelectbox div[data-baseweb="select"] > div,
+          .stDateInput input, .stNumberInput input {{
+            background: {_glass_input_bg} !important;
+            backdrop-filter: blur(10px) !important;
+            -webkit-backdrop-filter: blur(10px) !important;
+            border: 1px solid {_glass_border} !important;
+            border-radius: 10px !important;
+          }}
+
+          /* Metrics */
+          [data-testid="stMetric"] {{
+            background: {_glass_bg} !important;
+            backdrop-filter: blur(18px) !important;
+            -webkit-backdrop-filter: blur(18px) !important;
+            border: 1px solid {_glass_border} !important;
+            border-radius: 16px !important;
+            padding: 14px 18px !important;
+            box-shadow: {_glass_shadow} !important;
+          }}
+
+          /* Native charts */
+          [data-testid="stPlotlyChart"],
+          [data-testid="stArrowVegaLiteChart"],
+          div[data-testid="stVegaLiteChart"],
+          [data-testid="stBokehChart"] {{
+            background: {_glass_bg} !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border: 1px solid {_glass_border} !important;
+            border-radius: 18px !important;
+            padding: 12px !important;
+            box-shadow: {_glass_shadow} !important;
+          }}
+
+          /* Top of page: subtle UAT indicator pill */
+          .uat-glass-indicator {{
+            position: fixed; top: 14px; right: 18px;
+            z-index: 999;
+            padding: 5px 12px;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            background: rgba({_primary_rgb_glass}, 0.18);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba({_primary_rgb_glass}, 0.4);
+            color: rgba({_primary_rgb_glass}, 1);
+            box-shadow: 0 4px 12px rgba({_primary_rgb_glass}, 0.2);
+            pointer-events: none;
+          }}
+        </style>
+        <div class="uat-glass-indicator">✨ UAT Glass</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 # Main content tabs
 tab_new, tab_history, tab_dashboard, tab_settings = st.tabs([
     "🎙️ 新會議", "📚 過往會議", "📊 Dashboard", "⚙️ 設定"
