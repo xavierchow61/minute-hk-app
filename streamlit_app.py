@@ -1431,17 +1431,32 @@ if _chosen in _THEME_VARS:
                 color: {_t["primary"]} !important;
             }}
 
-            /* Inputs / selects / textareas */
+            /* Inputs / selects / textareas — broad selectors to catch all Streamlit wrappings */
+            textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
             .stTextInput input, .stTextArea textarea,
+            [data-baseweb="textarea"] textarea, [data-baseweb="input"] input,
+            [data-testid="stTextArea"] textarea, [data-testid="stTextInput"] input,
             .stSelectbox div[data-baseweb="select"] > div,
             .stDateInput input, .stNumberInput input {{
                 background: rgba(255,255,255,0.04) !important;
                 color: #fafafa !important;
                 border-color: rgba(255,255,255,0.1) !important;
+                -webkit-text-fill-color: #fafafa !important;
+                caret-color: #fafafa !important;
             }}
-            .stTextInput input::placeholder, .stTextArea textarea::placeholder {{
+            textarea::placeholder, input::placeholder {{
                 color: #71717a !important;
+                -webkit-text-fill-color: #71717a !important;
+                opacity: 1;
             }}
+
+            /* Logo "Minute.hk" wrapper + any inline-bolded dark headings */
+            div[style*="font-weight:800"][style*="color:#18181b"],
+            div[style*="font-weight:800"][style*="color: #18181b"],
+            div[style*="font-weight:800"] {{
+                color: #fafafa !important;
+            }}
+            /* span with color:#06b6d4 (.hk part) still recoloured by primary rule above */
 
             /* Tabs */
             .stTabs [data-baseweb="tab-list"] {{ background: transparent !important;
