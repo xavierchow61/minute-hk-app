@@ -758,6 +758,228 @@ if not auth.is_logged_in():
             unsafe_allow_html=True,
         )
 
+        # ============ "One Click" Magic Preview (animated demo) ============
+        _components.html(
+            """
+            <!DOCTYPE html>
+            <html lang="zh-Hant">
+            <head>
+            <meta charset="UTF-8" />
+            <style>
+              * { box-sizing: border-box; }
+              body {
+                margin: 0;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans HK', sans-serif;
+                color: #0f172a;
+                background: transparent;
+              }
+              .wrap { padding: 4px 2px 8px; }
+              .label {
+                font-size: 0.72rem; color: #64748b; font-weight: 600;
+                margin: 0 0 6px 4px; letter-spacing: 0.02em;
+              }
+              .card {
+                position: relative;
+                border-radius: 16px;
+                border: 1px solid #e2e8f0;
+                background: #ffffff;
+                box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06), 0 2px 6px rgba(15, 23, 42, 0.04);
+                overflow: hidden;
+              }
+              .topbar {
+                display: flex; align-items: center; justify-content: space-between;
+                padding: 10px 12px; border-bottom: 1px solid #f1f5f9;
+              }
+              .icon-btn {
+                background: transparent; border: 0; padding: 6px; border-radius: 8px;
+                cursor: pointer; color: #94a3b8; display: inline-flex;
+              }
+              .icon-btn:hover { background: #f8fafc; color: #475569; }
+              .right-group { display: flex; align-items: center; gap: 6px; }
+              .cta {
+                margin-left: 4px;
+                padding: 8px 14px; border: 0; border-radius: 10px;
+                color: #fff; font-weight: 600; font-size: 0.82rem; cursor: pointer;
+                background: linear-gradient(135deg, #06b6d4 0%, #a855f7 100%);
+                box-shadow: 0 6px 20px rgba(6, 182, 212, 0.35);
+                transition: transform 0.15s ease;
+                position: relative;
+              }
+              .cta:hover { transform: translateY(-1px); }
+              .cta.clicked { transform: scale(0.96); }
+              .cta-ring {
+                position: absolute; inset: -3px; border-radius: 12px;
+                border: 2px solid rgba(6, 182, 212, 0.55);
+                opacity: 0; pointer-events: none;
+              }
+              .cta.clicked .cta-ring { animation: ping 0.7s ease-out 1; }
+              @keyframes ping {
+                0% { transform: scale(0.9); opacity: 0.8; }
+                100% { transform: scale(1.25); opacity: 0; }
+              }
+              .transcript {
+                position: relative;
+                padding: 22px 22px 8px;
+                min-height: 150px;
+              }
+              .idle {
+                color: #94a3b8; font-style: italic; font-size: 0.88rem;
+              }
+              .line {
+                font-size: 0.98rem; line-height: 1.55; margin: 6px 0;
+                opacity: 0; transform: translateY(6px);
+                transition: opacity 0.45s ease, transform 0.45s ease;
+              }
+              .line.show { opacity: 1; transform: translateY(0); }
+              .zh { color: #0f172a; font-weight: 500; }
+              .en { color: #64748b; margin-left: 4px; }
+              .cursor {
+                position: absolute;
+                top: 8px; right: 14px;
+                width: 22px; height: 22px;
+                transform: rotate(-12deg);
+                transition: top 0.7s cubic-bezier(0.4, 0, 0.2, 1),
+                            left 0.7s cubic-bezier(0.4, 0, 0.2, 1),
+                            right 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+                pointer-events: none;
+                filter: drop-shadow(0 2px 4px rgba(15,23,42,0.18));
+              }
+              .cursor.moved { top: 12px; right: 90px; }
+              .progress-wrap {
+                padding: 10px 22px 16px;
+              }
+              .bar {
+                height: 6px; width: 100%; border-radius: 999px;
+                background: #f1f5f9; overflow: hidden;
+              }
+              .fill {
+                height: 100%; width: 0%; border-radius: 999px;
+                background: linear-gradient(90deg, #06b6d4 0%, #a855f7 100%);
+                transition: width 0.1s linear;
+              }
+              .caption {
+                margin-top: 8px; text-align: center;
+                font-size: 0.72rem; color: #94a3b8;
+              }
+              .caption strong { color: #06b6d4; font-weight: 700; }
+              @media (prefers-reduced-motion: reduce) {
+                .line { transition: none; }
+                .cursor { transition: none; }
+                .fill { transition: none; }
+              }
+            </style>
+            </head>
+            <body>
+              <div class="wrap">
+                <div class="label">✨ Actual Transcription Interface</div>
+                <div class="card">
+                  <div class="topbar">
+                    <button class="icon-btn" aria-label="Chat">
+                      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                      </svg>
+                    </button>
+                    <div class="right-group">
+                      <button class="icon-btn" aria-label="Video">
+                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
+                      </button>
+                      <button class="icon-btn" aria-label="More">
+                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h.01M12 12h.01M19 12h.01"/>
+                        </svg>
+                      </button>
+                      <button id="ctaBtn" class="cta">
+                        One Click to Transcribe
+                        <span class="cta-ring"></span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="transcript">
+                    <div id="idle" class="idle">↑ 按「One Click to Transcribe」開始</div>
+                    <div id="line0" class="line"><span class="zh">你好，今日嘅天氣好好</span><span class="en">(Hello, the weather is nice today)</span></div>
+                    <div id="line1" class="line"><span class="zh">正在實時轉錄</span><span class="en">(Real-time transcribing) ...</span></div>
+                    <div id="line2" class="line"><span class="zh">輕鬆、快速、一鍵即達</span><span class="en">(Easy, fast, one click away).</span></div>
+
+                    <svg id="cursor" class="cursor" viewBox="0 0 24 24" fill="none">
+                      <path d="M5.5 3.5L19 12L12 13L9 20L5.5 3.5Z" fill="#06b6d4" stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round"/>
+                    </svg>
+                  </div>
+
+                  <div class="progress-wrap">
+                    <div class="bar"><div id="fill" class="fill"></div></div>
+                    <div class="caption">Effortless Speed · <strong>95% Accurate</strong></div>
+                  </div>
+                </div>
+              </div>
+
+              <script>
+                (function () {
+                  const cta = document.getElementById('ctaBtn');
+                  const cursor = document.getElementById('cursor');
+                  const idle = document.getElementById('idle');
+                  const lines = [0, 1, 2].map(i => document.getElementById('line' + i));
+                  const fill = document.getElementById('fill');
+                  let running = false;
+                  let timers = [];
+
+                  function reset() {
+                    timers.forEach(clearTimeout);
+                    timers = [];
+                    running = false;
+                    cta.classList.remove('clicked');
+                    cursor.classList.remove('moved');
+                    idle.style.display = '';
+                    idle.textContent = '↑ 按「One Click to Transcribe」開始';
+                    lines.forEach(el => el.classList.remove('show'));
+                    fill.style.width = '0%';
+                  }
+
+                  function run() {
+                    if (running) return;
+                    running = true;
+                    timers.push(setTimeout(() => { cursor.classList.add('moved'); }, 200));
+                    timers.push(setTimeout(() => {
+                      cta.classList.add('clicked');
+                      idle.textContent = '正在聆聽…';
+                    }, 850));
+                    timers.push(setTimeout(() => { idle.style.display = 'none'; lines[0].classList.add('show'); }, 1400));
+                    timers.push(setTimeout(() => { lines[1].classList.add('show'); }, 2300));
+                    timers.push(setTimeout(() => { lines[2].classList.add('show'); }, 3300));
+                    let p = 0;
+                    const tick = () => {
+                      if (p < 95) {
+                        p = Math.min(95, p + 2);
+                        fill.style.width = p + '%';
+                        timers.push(setTimeout(tick, 55));
+                      }
+                    };
+                    timers.push(setTimeout(tick, 1500));
+                  }
+
+                  cta.addEventListener('click', () => { reset(); run(); });
+
+                  // Auto-run when in view (or immediately if IntersectionObserver missing)
+                  if ('IntersectionObserver' in window) {
+                    const io = new IntersectionObserver((entries) => {
+                      entries.forEach(e => {
+                        if (e.isIntersecting) { run(); io.disconnect(); }
+                      });
+                    }, { threshold: 0.3 });
+                    io.observe(cta);
+                  } else {
+                    setTimeout(run, 400);
+                  }
+                })();
+              </script>
+            </body>
+            </html>
+            """,
+            height=380,
+        )
+
         tab_login, tab_signup, tab_reset = st.tabs(["🔓 登入", "✨ 註冊", "🔑 忘記密碼"])
 
         with tab_login:
