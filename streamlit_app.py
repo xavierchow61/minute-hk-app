@@ -1472,26 +1472,148 @@ if _chosen in _THEME_VARS:
             .stApp, .main .block-container {{ color: #fafafa !important; }}
             h1, h2, h3, h4, h5, h6 {{ color: #fafafa !important; }}
             h5 {{ color: #a1a1aa !important; }}
+            p, span, div, label, small, strong, em {{ color: inherit; }}
             .stMarkdown, .stMarkdown p, .stText, label, .stCaption {{ color: #d4d4d8 !important; }}
-            .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
+
+            /* Inline-styled top bar wrapper (background:white) */
+            div[style*="background:white"], div[style*="background: white"] {{
+                background: rgba(255,255,255,0.04) !important;
+                border-color: rgba(255,255,255,0.08) !important;
+                box-shadow: none !important;
+            }}
+
+            /* Inline-styled dark text spans / divs — force light */
+            [style*="color:#18181b"], [style*="color: #18181b"],
+            [style*="color:#3f3f46"], [style*="color: #3f3f46"],
+            [style*="color:#27272a"], [style*="color: #27272a"],
+            [style*="color:#475569"], [style*="color: #475569"],
+            [style*="color:#52525b"], [style*="color: #52525b"],
+            [style*="color:#64748b"], [style*="color: #64748b"],
+            [style*="color:#71717a"], [style*="color: #71717a"],
+            [style*="color:#94a3b8"], [style*="color: #94a3b8"] {{
+                color: #e4e4e7 !important;
+            }}
+            /* Even lighter for muted captions */
+            [style*="color:#94a3b8"], [style*="color:#71717a"],
+            [style*="color:#64748b"] {{ color: #a1a1aa !important; }}
+
+            /* Cyan brand mark span in logo → palette primary */
+            [style*="color:#06b6d4"], [style*="color: #06b6d4"] {{
+                color: {_t["primary"]} !important;
+            }}
+
+            /* Inputs / selects / textareas */
+            .stTextInput input, .stTextArea textarea,
+            .stSelectbox div[data-baseweb="select"] > div,
+            .stDateInput input, .stNumberInput input {{
                 background: rgba(255,255,255,0.04) !important;
                 color: #fafafa !important;
                 border-color: rgba(255,255,255,0.1) !important;
             }}
-            .stTabs [data-baseweb="tab-list"] {{ background: rgba(255,255,255,0.02) !important; }}
+            .stTextInput input::placeholder, .stTextArea textarea::placeholder {{
+                color: #71717a !important;
+            }}
+
+            /* Tabs */
+            .stTabs [data-baseweb="tab-list"] {{ background: transparent !important;
+                                                 border-bottom: 1px solid rgba(255,255,255,0.08) !important; }}
             .stTabs [data-baseweb="tab"] {{ color: #a1a1aa !important; }}
             .stTabs [aria-selected="true"] {{ color: {_t["primary"]} !important; }}
+            .stTabs button {{ background: transparent !important; color: #a1a1aa !important; }}
+            .stTabs button[aria-selected="true"] {{ color: {_t["primary"]} !important; }}
+
+            /* Metrics */
             div[data-testid="stMetricValue"] {{ color: #fafafa !important; }}
             div[data-testid="stMetricLabel"] {{ color: #a1a1aa !important; }}
-            .stButton button:not([kind="primary"]):not([data-testid="baseButton-primary"]) {{
+            div[data-testid="stMetricDelta"] {{ color: #a1a1aa !important; }}
+
+            /* Secondary buttons */
+            .stButton button:not([kind="primary"]):not([data-testid="baseButton-primary"]),
+            .stDownloadButton button {{
                 background: rgba(255,255,255,0.05) !important;
                 color: #e4e4e7 !important;
                 border-color: rgba(255,255,255,0.12) !important;
             }}
-            .stExpander {{ background: rgba(255,255,255,0.03) !important;
-                          border-color: rgba(255,255,255,0.08) !important; }}
-            div[data-testid="stExpander"] details {{ background: rgba(255,255,255,0.02) !important; }}
-            div[data-testid="stAlert"] {{ background: rgba(255,255,255,0.04) !important; }}
+
+            /* Segmented control */
+            div[data-testid="stSegmentedControl"] label,
+            div[data-testid="stSegmentedControl"] button {{
+                background: rgba(255,255,255,0.04) !important;
+                color: #e4e4e7 !important;
+                border-color: rgba(255,255,255,0.1) !important;
+            }}
+            div[data-testid="stSegmentedControl"] label[data-checked="true"],
+            div[data-testid="stSegmentedControl"] button[aria-pressed="true"],
+            div[data-testid="stSegmentedControl"] label:has(input:checked) {{
+                background: rgba({_t["primary_rgb"]}, 0.25) !important;
+                color: #fafafa !important;
+                border-color: rgba({_t["primary_rgb"]}, 0.5) !important;
+            }}
+
+            /* Radio buttons */
+            div[data-testid="stRadio"] label {{ color: #e4e4e7 !important; }}
+
+            /* File uploader */
+            section[data-testid="stFileUploaderDropzone"],
+            div[data-testid="stFileUploader"] section {{
+                background: rgba(255,255,255,0.03) !important;
+                border-color: rgba(255,255,255,0.15) !important;
+                color: #d4d4d8 !important;
+            }}
+            div[data-testid="stFileUploader"] section button,
+            div[data-testid="stFileUploader"] button {{
+                background: rgba(255,255,255,0.08) !important;
+                color: #fafafa !important;
+                border-color: rgba(255,255,255,0.15) !important;
+            }}
+            div[data-testid="stFileUploader"] small,
+            div[data-testid="stFileUploader"] p,
+            div[data-testid="stFileUploader"] span {{
+                color: #a1a1aa !important;
+            }}
+
+            /* Expanders */
+            .stExpander, div[data-testid="stExpander"] {{
+                background: rgba(255,255,255,0.03) !important;
+                border-color: rgba(255,255,255,0.08) !important;
+            }}
+            div[data-testid="stExpander"] details {{
+                background: transparent !important;
+                color: #e4e4e7 !important;
+            }}
+            div[data-testid="stExpander"] summary {{ color: #fafafa !important; }}
+
+            /* Popover */
+            div[data-testid="stPopover"] button {{
+                background: rgba(255,255,255,0.05) !important;
+                color: #fafafa !important;
+                border-color: rgba(255,255,255,0.12) !important;
+            }}
+
+            /* Alerts (info / warning / error / success) */
+            div[data-testid="stAlert"] {{
+                background: rgba(255,255,255,0.04) !important;
+                color: #e4e4e7 !important;
+                border-color: rgba(255,255,255,0.08) !important;
+            }}
+            div[data-testid="stAlert"] * {{ color: #e4e4e7 !important; }}
+
+            /* Plan badges (FREE / PRO / TEAM) — keep accent bg but lighter */
+            .badge-free, .badge-pro, .badge-team {{
+                background: rgba(255,255,255,0.08) !important;
+                color: #fafafa !important;
+            }}
+            /* Inline plan badge style */
+            span[style*="border-radius:8px"][style*="font-weight:700"] {{
+                background: rgba(255,255,255,0.1) !important;
+                color: #fafafa !important;
+            }}
+
+            /* Dividers / horizontal rules */
+            hr {{ border-color: rgba(255,255,255,0.08) !important; }}
+
+            /* Links inside menu popovers */
+            a[style*="color:#1e66f5"] {{ color: {_t["primary"]} !important; }}
         """
 
     st.markdown(
