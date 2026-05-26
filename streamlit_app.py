@@ -1544,81 +1544,9 @@ if "palette_choice" not in st.session_state:
     st.session_state.palette_choice = None
 
 _chosen = st.session_state.palette_choice
-_chosen_name = next((p["name"] for p in PALETTES if p["key"] == _chosen), None)
 
-with st.expander(
-    f"🎨 Brand Palette Picker · 目前：{_chosen_name or '未揀'}" if _chosen
-    else "🎨 Brand Palette Proposals — 揀一個你最鍾意嘅 (click to expand)",
-    expanded=(_chosen is None),
-):
-    st.caption("Context: Minute-HK Branding Options — 揀你最 fit 嘅色調 direction")
-    _pal_cols = st.columns(3, gap="medium")
-    for _i, _pal in enumerate(PALETTES):
-        with _pal_cols[_i]:
-            _selected = (_chosen == _pal["key"])
-            _border = "3px solid #06b6d4" if _selected else "1px solid #e2e8f0"
-            _swatches_html = "".join(
-                f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">'
-                f'<div style="width:32px;height:32px;border-radius:8px;background:{_hex};'
-                f'border:1px solid rgba(0,0,0,0.08);"></div>'
-                f'<div style="font-size:0.62rem;color:#94a3b8;font-family:monospace;">{_hex}</div>'
-                f'</div>'
-                for _hex in _pal["swatches"]
-            )
-            st.markdown(
-                f"""
-                <div style="border:{_border};border-radius:16px;padding:18px;
-                            background:#ffffff;box-shadow:0 4px 16px rgba(15,23,42,0.04);
-                            transition:transform 0.15s ease;">
-                  <div style="font-size:0.7rem;color:#64748b;font-weight:600;
-                              letter-spacing:0.04em;text-transform:uppercase;margin-bottom:6px;">
-                    {_pal["name"]} · {_pal["vibe"]}
-                  </div>
-                  <div style="background:{_pal["card_bg"]};border-radius:12px;padding:22px 16px;
-                              text-align:center;margin-bottom:14px;
-                              border:1px solid rgba(0,0,0,0.06);">
-                    <div style="font-size:1.25rem;font-weight:800;color:{_pal["card_text"]};
-                                margin-bottom:6px;line-height:1.2;">
-                      {_pal["sub_brand"]}
-                    </div>
-                    <div style="font-size:0.78rem;color:{_pal["tagline_color"]};margin-bottom:14px;">
-                      {_pal["tagline"]}
-                    </div>
-                    <div style="display:flex;align-items:center;justify-content:center;gap:10px;">
-                      <span style="background:{_pal["btn_bg"]};color:{_pal["btn_text"]};
-                                  padding:8px 16px;border-radius:999px;font-size:0.78rem;
-                                  font-weight:700;display:inline-block;">
-                        {_pal["cta"]}
-                      </span>
-                      <span style="font-size:1.4rem;">{_pal["accent_icon"]}</span>
-                    </div>
-                  </div>
-                  <div style="font-size:0.68rem;color:#94a3b8;font-weight:600;margin-bottom:6px;">
-                    Color Palette Details
-                  </div>
-                  <div style="display:flex;justify-content:space-between;gap:6px;">
-                    {_swatches_html}
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            _btn_label = "✅ 已揀" if _selected else f"揀 {_pal['name']}"
-            if st.button(
-                _btn_label,
-                key=f"pick_palette_{_pal['key']}",
-                use_container_width=True,
-                type="primary" if _selected else "secondary",
-                disabled=_selected,
-            ):
-                st.session_state.palette_choice = _pal["key"]
-                st.toast(f"🎨 已揀 {_pal['name']} palette", icon="✅")
-                st.rerun()
-
-    if _chosen:
-        if st.button("🔄 重置選擇", key="reset_palette"):
-            st.session_state.palette_choice = None
-            st.rerun()
+# Picker UI lives inside Settings tab (see below).
+# Theme overrides still apply globally so re-skin happens app-wide.
 
 # ============ Apply palette theme overrides (re-skin the app) ============
 _THEME_VARS = {
@@ -3179,5 +3107,82 @@ with tab_settings:
                     st.error(msg)
 
     # 帳號資料 section 隱藏 — Email + Plan 已喺 top user bar 顯示
+
+    # ============ 🎨 Brand Palette Picker ============
+    st.markdown("---")
+    st.markdown("##### 🎨 Brand Palette")
+    _cur_choice = st.session_state.get("palette_choice")
+    _cur_name = next((p["name"] for p in PALETTES if p["key"] == _cur_choice), None)
+    st.caption(
+        f"目前主題：**{_cur_name}**" if _cur_choice
+        else "未揀主題（用預設 cyan）— 揀一個 palette 即時 re-skin 成個 app"
+    )
+
+    _pal_cols = st.columns(3, gap="medium")
+    for _i, _pal in enumerate(PALETTES):
+        with _pal_cols[_i]:
+            _selected = (_cur_choice == _pal["key"])
+            _border = "3px solid #06b6d4" if _selected else "1px solid #e2e8f0"
+            _swatches_html = "".join(
+                f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">'
+                f'<div style="width:32px;height:32px;border-radius:8px;background:{_hex};'
+                f'border:1px solid rgba(0,0,0,0.08);"></div>'
+                f'<div style="font-size:0.62rem;color:#94a3b8;font-family:monospace;">{_hex}</div>'
+                f'</div>'
+                for _hex in _pal["swatches"]
+            )
+            st.markdown(
+                f"""
+                <div style="border:{_border};border-radius:16px;padding:18px;
+                            background:#ffffff;box-shadow:0 4px 16px rgba(15,23,42,0.04);">
+                  <div style="font-size:0.7rem;color:#64748b;font-weight:600;
+                              letter-spacing:0.04em;text-transform:uppercase;margin-bottom:6px;">
+                    {_pal["name"]} · {_pal["vibe"]}
+                  </div>
+                  <div style="background:{_pal["card_bg"]};border-radius:12px;padding:22px 16px;
+                              text-align:center;margin-bottom:14px;
+                              border:1px solid rgba(0,0,0,0.06);">
+                    <div style="font-size:1.25rem;font-weight:800;color:{_pal["card_text"]};
+                                margin-bottom:6px;line-height:1.2;">
+                      {_pal["sub_brand"]}
+                    </div>
+                    <div style="font-size:0.78rem;color:{_pal["tagline_color"]};margin-bottom:14px;">
+                      {_pal["tagline"]}
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:center;gap:10px;">
+                      <span style="background:{_pal["btn_bg"]};color:{_pal["btn_text"]};
+                                  padding:8px 16px;border-radius:999px;font-size:0.78rem;
+                                  font-weight:700;display:inline-block;">
+                        {_pal["cta"]}
+                      </span>
+                      <span style="font-size:1.4rem;">{_pal["accent_icon"]}</span>
+                    </div>
+                  </div>
+                  <div style="font-size:0.68rem;color:#94a3b8;font-weight:600;margin-bottom:6px;">
+                    Color Palette Details
+                  </div>
+                  <div style="display:flex;justify-content:space-between;gap:6px;">
+                    {_swatches_html}
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            _btn_label = "✅ 已揀" if _selected else f"揀 {_pal['name']}"
+            if st.button(
+                _btn_label,
+                key=f"pick_palette_{_pal['key']}",
+                use_container_width=True,
+                type="primary" if _selected else "secondary",
+                disabled=_selected,
+            ):
+                st.session_state.palette_choice = _pal["key"]
+                st.toast(f"🎨 已揀 {_pal['name']} palette", icon="✅")
+                st.rerun()
+
+    if _cur_choice:
+        if st.button("🔄 重置為預設主題 (cyan)", key="reset_palette"):
+            st.session_state.palette_choice = None
+            st.rerun()
 
   _render_settings_tab()
