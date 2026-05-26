@@ -1441,6 +1441,123 @@ with st.expander(
             st.session_state.palette_choice = None
             st.rerun()
 
+# ============ Apply palette theme overrides (re-skin the app) ============
+_THEME_VARS = {
+    "deep_tech_blue": {
+        "primary": "#0055FF", "primary_dark": "#003ECC", "primary_darker": "#002A99",
+        "primary_rgb": "0, 85, 255",
+        "bg_a": "rgba(0, 85, 255, 0.05)", "bg_b": "rgba(26, 43, 76, 0.04)",
+        "app_bg": "#fafafa", "is_dark": False,
+    },
+    "minty_fresh": {
+        "primary": "#00B8AD", "primary_dark": "#00897B", "primary_darker": "#005F56",
+        "primary_rgb": "0, 184, 173",
+        "bg_a": "rgba(0, 184, 173, 0.06)", "bg_b": "rgba(168, 184, 207, 0.04)",
+        "app_bg": "#f8f9fa", "is_dark": False,
+    },
+    "midnight_violet": {
+        "primary": "#9C27B0", "primary_dark": "#673AB7", "primary_darker": "#4A148C",
+        "primary_rgb": "156, 39, 176",
+        "bg_a": "rgba(156, 39, 176, 0.18)", "bg_b": "rgba(103, 58, 183, 0.14)",
+        "app_bg": "#0a0a0f", "is_dark": True,
+    },
+}
+
+if _chosen in _THEME_VARS:
+    _t = _THEME_VARS[_chosen]
+    _dark_extra = ""
+    if _t["is_dark"]:
+        _dark_extra = f"""
+            /* Dark mode for Midnight Violet */
+            .stApp, .main .block-container {{ color: #fafafa !important; }}
+            h1, h2, h3, h4, h5, h6 {{ color: #fafafa !important; }}
+            h5 {{ color: #a1a1aa !important; }}
+            .stMarkdown, .stMarkdown p, .stText, label, .stCaption {{ color: #d4d4d8 !important; }}
+            .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
+                background: rgba(255,255,255,0.04) !important;
+                color: #fafafa !important;
+                border-color: rgba(255,255,255,0.1) !important;
+            }}
+            .stTabs [data-baseweb="tab-list"] {{ background: rgba(255,255,255,0.02) !important; }}
+            .stTabs [data-baseweb="tab"] {{ color: #a1a1aa !important; }}
+            .stTabs [aria-selected="true"] {{ color: {_t["primary"]} !important; }}
+            div[data-testid="stMetricValue"] {{ color: #fafafa !important; }}
+            div[data-testid="stMetricLabel"] {{ color: #a1a1aa !important; }}
+            .stButton button:not([kind="primary"]):not([data-testid="baseButton-primary"]) {{
+                background: rgba(255,255,255,0.05) !important;
+                color: #e4e4e7 !important;
+                border-color: rgba(255,255,255,0.12) !important;
+            }}
+            .stExpander {{ background: rgba(255,255,255,0.03) !important;
+                          border-color: rgba(255,255,255,0.08) !important; }}
+            div[data-testid="stExpander"] details {{ background: rgba(255,255,255,0.02) !important; }}
+            div[data-testid="stAlert"] {{ background: rgba(255,255,255,0.04) !important; }}
+        """
+
+    st.markdown(
+        f"""
+        <style>
+          /* === Palette theme override: {_chosen} === */
+          .stApp {{
+            background:
+                radial-gradient(900px circle at 0% 0%, {_t["bg_a"]}, transparent 50%),
+                radial-gradient(700px circle at 100% 100%, {_t["bg_b"]}, transparent 50%),
+                {_t["app_bg"]} !important;
+          }}
+
+          /* Primary buttons */
+          .stButton button[kind="primary"],
+          .stButton button[data-testid="baseButton-primary"],
+          .stFormSubmitButton button[kind="primaryFormSubmit"],
+          .stForm button[kind="primary"] {{
+            background: linear-gradient(135deg, {_t["primary"]} 0%, {_t["primary_dark"]} 100%) !important;
+            box-shadow: 0 4px 12px rgba({_t["primary_rgb"]}, 0.25) !important;
+            color: #FFFFFF !important;
+          }}
+          .stButton button[kind="primary"]:hover,
+          .stButton button[data-testid="baseButton-primary"]:hover {{
+            background: linear-gradient(135deg, {_t["primary_dark"]} 0%, {_t["primary_darker"]} 100%) !important;
+            box-shadow: 0 6px 16px rgba({_t["primary_rgb"]}, 0.35) !important;
+          }}
+
+          /* Secondary button hover (border + text) */
+          .stButton button:hover,
+          .stDownloadButton button:hover {{
+            border-color: {_t["primary"]} !important;
+            color: {_t["primary"]} !important;
+          }}
+
+          /* Input focus */
+          .stTextInput input:focus, .stTextArea textarea:focus {{
+            border-color: {_t["primary"]} !important;
+            box-shadow: 0 0 0 3px rgba({_t["primary_rgb"]}, 0.15) !important;
+          }}
+
+          /* Tab indicator */
+          .stTabs [data-baseweb="tab-highlight"] {{ background-color: {_t["primary"]} !important; }}
+          .stTabs [aria-selected="true"] {{ color: {_t["primary"]} !important; }}
+
+          /* Progress bar / slider */
+          .stProgress > div > div > div {{ background-color: {_t["primary"]} !important; }}
+          .stSlider [role="slider"] {{ background-color: {_t["primary"]} !important; }}
+
+          /* Links + accent text */
+          a {{ color: {_t["primary"]} !important; }}
+
+          /* Brand chip in top bar (if any references cyan 06b6d4) */
+          span[style*="color:#06b6d4"], span[style*="color: #06b6d4"] {{
+            color: {_t["primary"]} !important;
+          }}
+
+          /* Caption text accent */
+          .stCaption a {{ color: {_t["primary"]} !important; }}
+
+          {_dark_extra}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
 # Main content tabs
 tab_new, tab_history, tab_dashboard, tab_settings = st.tabs([
     "🎙️ 新會議", "📚 過往會議", "📊 Dashboard", "⚙️ 設定"
