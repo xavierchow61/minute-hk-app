@@ -760,7 +760,8 @@ if not auth.is_logged_in():
         )
 
     # === Logo 下面：左右分欄 (左 = preview demo, 右 = 登入/註冊) ===
-    col_preview, col_login = st.columns([1, 1], gap="large")
+    # 右邊登入欄闊啲（2:3 比例），縮細 gap 避免太鬆散
+    col_preview, col_login = st.columns([2, 3], gap="small")
 
     with col_preview:
         # ============ "One Click" Magic Preview (animated demo) ============
