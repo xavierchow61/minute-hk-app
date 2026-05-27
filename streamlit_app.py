@@ -58,7 +58,7 @@ def is_pro_user(user_plan: str) -> bool:
 
 def show_pro_locked_toast(feature_name: str = "呢個功能"):
     """顯示 toast 提示用戶升級"""
-    st.toast(f"🔒 {feature_name} 係 Pro 功能 — 撳上面 🆓 FREE 升級", icon="⭐")
+    st.toast(f"🔒 {feature_name} 係 Pro 功能 — 撳上面 🆓 免費 升級", icon="⭐")
 
 
 def is_garbage_output(text: str) -> bool:
@@ -273,9 +273,9 @@ if IS_UAT:
                     color:#7c2d12;padding:8px 14px;border-radius:10px;
                     text-align:center;font-weight:600;font-size:0.85rem;
                     margin-bottom:0.6rem;border:1px solid #fbbf24;'>
-            🧪 <strong>UAT 測試版</strong> · 呢度嘅數據獨立於 prod，可以隨便試 ·
+            🧪 <strong>UAT 測試版</strong> · 呢度嘅數據獨立於正式版，可以隨便試 ·
             <a href='https://minute-hk-app.streamlit.app' target='_blank'
-               style='color:#7c2d12;text-decoration:underline;'>切換去 Prod</a>
+               style='color:#7c2d12;text-decoration:underline;'>切換去 正式版</a>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1171,8 +1171,8 @@ with ubar_outer:
 
     with col_right:
         if plan == "free":
-            # 🆓 FREE badge 變 popover button - click 彈出升級
-            with st.popover(f"🆓 FREE", use_container_width=True):
+            # 🆓 免費 badge 變 popover button - click 彈出升級
+            with st.popover(f"🆓 免費", use_container_width=True):
                 st.markdown("##### ⭐ 升級 Pro")
                 st.markdown(
                     '<div style="font-size:1.4rem;font-weight:800;color:#06b6d4;'
@@ -1192,7 +1192,7 @@ with ubar_outer:
                     "**整合**  \n"
                     "✓ 🗂️ Industry-specific prompts  \n"
                     "✓ 🏷️ 自定 jargon dictionary  \n"
-                    "✓ 📈 Dashboard + 詞雲  \n"
+                    "✓ 📈 儀表板 + 詞雲  \n"
                     "✓ 🔍 過往會議搜尋 + date filter  \n"
                     "✓ 📧 Email 支援"
                 )
@@ -1624,8 +1624,8 @@ if _chosen in _THEME_VARS:
         unsafe_allow_html=True,
     )
 
-# ============ UAT-only Glassmorphism Theme (Testing mode visual upgrade) ============
-if IS_UAT:
+# ============ Glassmorphism Theme (applies app-wide) ============
+if True:  # was IS_UAT-gated; now enabled in prod too
     _primary_rgb_glass = "6, 182, 212"
     _secondary_rgb_glass = "168, 85, 247"
     _is_dark_palette = False
@@ -1850,14 +1850,19 @@ if IS_UAT:
             pointer-events: none;
           }}
         </style>
-        <div class="uat-glass-indicator">✨ 測試版玻璃主題</div>
         """,
         unsafe_allow_html=True,
     )
+    # Only show the floating UAT badge in UAT env (production stays clean)
+    if IS_UAT:
+        st.markdown(
+            '<div class="uat-glass-indicator">✨ 測試版玻璃主題</div>',
+            unsafe_allow_html=True,
+        )
 
 # Main content tabs
 tab_new, tab_history, tab_dashboard, tab_settings = st.tabs([
-    "🎙️ 新會議", "📚 過往會議", "📊 Dashboard", "⚙️ 設定"
+    "🎙️ 新會議", "📚 過往會議", "📊 儀表板", "⚙️ 設定"
 ])
 
 # ============ Tab 1: New Meeting ============
@@ -2712,7 +2717,7 @@ with tab_dashboard:
         if not IS_PRO:
             st.info(
                 "🔒 **每月趨勢圖** 係 Pro 功能。"
-                "撳上面 🆓 FREE badge 升級解鎖。"
+                "撳上面 🆓 免費 badge 升級解鎖。"
             )
         elif stats["monthly_counts"] and len(stats["monthly_counts"]) > 1:
             import pandas as pd
@@ -2739,7 +2744,7 @@ with tab_dashboard:
                 for i, (client, count) in enumerate(stats["top_clients"][:5], 1):
                     st.write(f"{i}. **{client}** — {count} 個 meeting")
             else:
-                st.caption("（暫時冇 client tag）")
+                st.caption("（暫時冇客戶標籤）")
 
         with col_right:
             st.markdown("##### 📂 Top 項目")
@@ -2755,7 +2760,7 @@ with tab_dashboard:
         if not IS_PRO:
             st.info(
                 "🔒 **詞雲分析** 係 Pro 功能。"
-                "撳上面 🆓 FREE badge 升級解鎖。"
+                "撳上面 🆓 免費 badge 升級解鎖。"
             )
         elif st.button("🔄 生成詞雲", key="gen_wordcloud"):
             with st.spinner("分析所有會議文字..."):
@@ -2892,7 +2897,7 @@ with tab_settings:
     with sub_tab_jargon:
         if not IS_PRO:
             st.info(
-                "⭐ Pro 用戶可以一鍵套用 9 個行業嘅常用術語 pack —— "
+                "⭐ Pro 用戶可以一鍵套用 9 個行業嘅常用術語詞庫 —— "
                 "會計 / 法律 / 醫療 / 銷售 / 教育 / 地產 / 金融 / 顧問 / 科技。\n\n"
                 "升級 Pro 即可解鎖。"
             )
@@ -2917,12 +2922,12 @@ with tab_settings:
                         placeholder="例：HKFRS 18、Peter Chan、ABC Holdings、CFR、香港金管局、Cap. 622...",
                         height=200,
                         help="用逗號或新行分隔。AI 會特別留意呢啲詞，識別準確度大幅提升。"
-                             "右邊「套用 pack」可以一鍵 import 行業常用詞。",
+                             "右邊「套用詞庫」可以一鍵匯入行業常用詞。",
                     )
                 with jcol_pack:
                     st.markdown(
                         "<div style='font-size:0.875rem;font-weight:600;"
-                        "margin-bottom:0.25rem;'>📦 行業 pack</div>",
+                        "margin-bottom:0.25rem;'>📦 行業詞庫</div>",
                         unsafe_allow_html=True,
                     )
                     pack_select = st.selectbox(
@@ -2933,7 +2938,7 @@ with tab_settings:
                         label_visibility="collapsed",
                     )
                     apply_pack = st.form_submit_button(
-                        "✅ 套用 pack",
+                        "✅ 套用詞庫",
                         use_container_width=True,
                         help="會 append 落左邊嘅字典，dedupe 重複詞",
                     )
@@ -3145,7 +3150,7 @@ with tab_settings:
         _cur_name = next((p["name"] for p in PALETTES if p["key"] == _cur_choice), None)
         st.caption(
             f"目前主題：**{_cur_name}**" if _cur_choice
-            else "未揀主題（用預設藍青色）— 揀一個下面嘅色板即時 re-skin 成個 app"
+            else "未揀主題（用預設藍青色）— 揀一個下面嘅色板即時重新套色整個 app"
         )
 
         _pal_cols = st.columns(3, gap="medium")
