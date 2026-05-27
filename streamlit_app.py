@@ -759,6 +759,10 @@ if not auth.is_logged_in():
             unsafe_allow_html=True,
         )
 
+    # === Logo 下面：左右分欄 (左 = preview demo, 右 = 登入/註冊) ===
+    col_preview, col_login = st.columns([1, 1], gap="large")
+
+    with col_preview:
         # ============ "One Click" Magic Preview (animated demo) ============
         _components.html(
             """
@@ -981,6 +985,7 @@ if not auth.is_logged_in():
             height=380,
         )
 
+    with col_login:
         tab_login, tab_signup, tab_reset = st.tabs(["🔓 登入", "✨ 註冊", "🔑 忘記密碼"])
 
         with tab_login:
