@@ -1860,6 +1860,164 @@ if True:  # was IS_UAT-gated; now enabled in prod too
             unsafe_allow_html=True,
         )
 
+# ============ Onboarding cards (first-visit walkthrough) ============
+if not st.session_state.get("onboarding_dismissed", False):
+    st.markdown(
+        """
+        <style>
+          .mh-onboard-strip {
+            display: flex;
+            gap: 16px;
+            overflow-x: auto;
+            padding: 6px 4px 18px 4px;
+            margin: 8px 0 4px 0;
+            scroll-snap-type: x mandatory;
+            scrollbar-width: thin;
+          }
+          .mh-onboard-strip::-webkit-scrollbar { height: 6px; }
+          .mh-onboard-strip::-webkit-scrollbar-thumb {
+            background: rgba(201, 123, 92, 0.35);
+            border-radius: 999px;
+          }
+          .mh-onboard-card {
+            flex: 0 0 340px;
+            scroll-snap-align: start;
+            background: #FAF6EF;
+            border-radius: 20px;
+            padding: 26px 28px;
+            font-family: -apple-system, "Noto Sans HK", "PingFang HK",
+                         "Microsoft JhengHei", sans-serif;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+            border: 1px solid rgba(0,0,0,0.04);
+            display: flex; flex-direction: column;
+          }
+          .mh-onboard-head {
+            display: flex; align-items: baseline; gap: 14px;
+            margin-bottom: 10px;
+          }
+          .mh-onboard-num {
+            font-family: Georgia, "Times New Roman", serif;
+            font-size: 40px; font-weight: 300;
+            color: #C97B5C; line-height: 1;
+          }
+          .mh-onboard-eyebrow {
+            font-size: 0.68rem; font-weight: 600;
+            letter-spacing: 0.28em; color: #7A5240;
+            text-transform: uppercase;
+          }
+          .mh-onboard-title {
+            font-family: "Noto Serif HK", Georgia, serif;
+            font-size: 1.45rem; font-weight: 700;
+            color: #3A2A22; margin: 2px 0 12px;
+          }
+          .mh-onboard-body {
+            color: #5A4438; font-size: 0.92rem;
+            line-height: 1.7; flex-grow: 1;
+          }
+          .mh-onboard-body strong { color: #C97B5C; }
+          .mh-onboard-body code {
+            background: rgba(201, 123, 92, 0.10);
+            color: #8B4A2F; padding: 1px 6px;
+            border-radius: 6px; font-size: 0.82rem;
+          }
+          .mh-onboard-chips {
+            margin-top: 14px; display: flex;
+            gap: 6px; flex-wrap: wrap;
+          }
+          .mh-onboard-chip {
+            background: #F0DDD0; color: #8B4A2F;
+            padding: 4px 11px; border-radius: 999px;
+            font-size: 0.66rem; font-weight: 600;
+            letter-spacing: 0.08em;
+          }
+          .mh-onboard-hint {
+            text-align: center; color: #7A5240;
+            font-size: 0.78rem; margin: 4px 0 10px;
+            opacity: 0.75;
+          }
+        </style>
+        <div class="mh-onboard-hint">👋 第一次嚟？左右拉睇 4 個步驟，然後撳下面開始</div>
+        <div class="mh-onboard-strip">
+
+          <div class="mh-onboard-card">
+            <div class="mh-onboard-head">
+              <div class="mh-onboard-num">01</div>
+              <div class="mh-onboard-eyebrow">UPLOAD · 上傳錄音</div>
+            </div>
+            <div class="mh-onboard-title">丟個錄音入嚟</div>
+            <div class="mh-onboard-body">
+              拖個 <code>.mp3</code> / <code>.m4a</code> / <code>.wav</code> 入嚟。
+              AI 識聽<strong>香港廣東話</strong>、中英夾雜、行業術語。系統會自動分段、加 timestamp。
+            </div>
+            <div class="mh-onboard-chips">
+              <span class="mh-onboard-chip">廣東話</span>
+              <span class="mh-onboard-chip">中英夾雜</span>
+              <span class="mh-onboard-chip">AUTO TS</span>
+            </div>
+          </div>
+
+          <div class="mh-onboard-card">
+            <div class="mh-onboard-head">
+              <div class="mh-onboard-num">02</div>
+              <div class="mh-onboard-eyebrow">AI MAGIC · 整理紀要</div>
+            </div>
+            <div class="mh-onboard-title">3 分鐘出一份 brief</div>
+            <div class="mh-onboard-body">
+              Gemini 自動 extract <strong>重點</strong>、<strong>決議</strong>、<strong>Action Items</strong>（連負責人 + Deadline）。會議一完就有 Markdown 紀要返手，唔使再 type。
+            </div>
+            <div class="mh-onboard-chips">
+              <span class="mh-onboard-chip">3 MIN</span>
+              <span class="mh-onboard-chip">ACTION ITEMS</span>
+            </div>
+          </div>
+
+          <div class="mh-onboard-card">
+            <div class="mh-onboard-head">
+              <div class="mh-onboard-num">03</div>
+              <div class="mh-onboard-eyebrow">EXPORT · 一鍵輸出</div>
+            </div>
+            <div class="mh-onboard-title">Word · PDF · PPT</div>
+            <div class="mh-onboard-body">
+              紀要直接匯出 <code>.docx</code> / <code>.pdf</code>，或者<strong>一鍵生成簡報</strong>。發 email、貼 Slack、入 deck，全部即時搞掂。
+            </div>
+            <div class="mh-onboard-chips">
+              <span class="mh-onboard-chip">3 FORMATS</span>
+              <span class="mh-onboard-chip">INSTANT</span>
+            </div>
+          </div>
+
+          <div class="mh-onboard-card">
+            <div class="mh-onboard-head">
+              <div class="mh-onboard-num">04</div>
+              <div class="mh-onboard-eyebrow">PRO · 行業詞庫</div>
+            </div>
+            <div class="mh-onboard-title">9 個 pack 任揀</div>
+            <div class="mh-onboard-body">
+              會計 / 法律 / 醫療 / 銷售…一鍵套用行業常用詞，AI 識辨 <strong>HKFRS</strong>、<strong>Cap. 622</strong>、<strong>ICD-10</strong>。仲可以自定 jargon 字典，準確度大幅提升。
+            </div>
+            <div class="mh-onboard-chips">
+              <span class="mh-onboard-chip">9 INDUSTRIES</span>
+              <span class="mh-onboard-chip">JARGON</span>
+              <span class="mh-onboard-chip">PRO</span>
+            </div>
+          </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    _ob_col_l, _ob_col_c, _ob_col_r = st.columns([2, 1, 2])
+    with _ob_col_c:
+        if st.button(
+            "✓ 我明白，開始用",
+            key="onboard_dismiss_btn",
+            use_container_width=True,
+            type="primary",
+        ):
+            st.session_state.onboarding_dismissed = True
+            st.rerun()
+    st.markdown("---")
+
 # Main content tabs
 tab_new, tab_history, tab_dashboard, tab_settings = st.tabs([
     "🎙️ 新會議", "📚 過往會議", "📊 儀表板", "⚙️ 設定"
