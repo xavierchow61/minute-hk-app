@@ -231,7 +231,7 @@ def get_user_settings(user_id: str) -> dict:
     sb = get_supabase()
     result = (
         sb.table("user_plans")
-        .select("company_name, industry, jargon, summary_length")
+        .select("company_name, industry, jargon, summary_length, onboarding_dismissed")
         .eq("user_id", user_id)
         .limit(1)
         .execute()
@@ -243,12 +243,14 @@ def get_user_settings(user_id: str) -> dict:
             "industry": row.get("industry") or "generic",
             "jargon": row.get("jargon") or "",
             "summary_length": row.get("summary_length") or "medium",
+            "onboarding_dismissed": bool(row.get("onboarding_dismissed") or False),
         }
     return {
         "company_name": "",
         "industry": "generic",
         "jargon": "",
         "summary_length": "medium",
+        "onboarding_dismissed": False,
     }
 
 
@@ -311,8 +313,12 @@ def claim_invite_code_and_upgrade(code: str, user_id: str = None, target_plan: s
 
 
 def update_user_settings(user_id: str, **kwargs) -> None:
-    """Update user 設定。允許 fields: company_name, industry, jargon, summary_length"""
-    allowed = {"company_name", "industry", "jargon", "summary_length"}
+    """Update user 設定。允許 fields: company_name, industry, jargon,
+    summary_length, onboarding_dismissed"""
+    allowed = {
+        "company_name", "industry", "jargon", "summary_length",
+        "onboarding_dismissed",
+    }
     update_data = {k: v for k, v in kwargs.items() if k in allowed}
     if not update_data:
         return
