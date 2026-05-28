@@ -20,7 +20,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!;
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-2.5-pro";  // Flash family 全線 overload 緊, pro quota 鬆 + 質素更高
 const TG_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 const TG_FILE_API = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}`;
 const GEMINI_URL =
@@ -241,6 +241,7 @@ function uint8ToBase64(bytes: Uint8Array): string {
 }
 
 async function callGemini(audioBytes: Uint8Array, mimeType: string, prompt: string, maxTokens: number): Promise<string> {
+  console.log("callGemini using model:", GEMINI_MODEL);
   const b64 = uint8ToBase64(audioBytes);
   const res = await fetch(GEMINI_URL, {
     method: "POST",
@@ -250,7 +251,7 @@ async function callGemini(audioBytes: Uint8Array, mimeType: string, prompt: stri
       generationConfig: { temperature: 0.2, maxOutputTokens: maxTokens },
     }),
   });
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).substring(0, 300)}`);
+  if (!res.ok) throw new Error(`Gemini ${res.status} (model=${GEMINI_MODEL}): ${(await res.text()).substring(0, 300)}`);
   const data = await res.json();
   return data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 }
@@ -367,7 +368,7 @@ async function processSummary(
   }
 
   const ext = kind === "audio" ? "mp3" : "ogg";
-  await supabase.from("meetings").insert({
+  const { error: insErr } = await supabase.from("meetings").insert({
     user_id: userInfo.user_id,
     summary,
     transcript: "",
@@ -376,6 +377,11 @@ async function processSummary(
     duration_seconds: durationSec,
     audio_filename: `telegram-${kind}-${Date.now()}.${ext}`,
   });
+  if (insErr) {
+    console.error("Meetings insert failed (summary path):", JSON.stringify(insErr));
+  } else {
+    console.log("Meetings insert OK (summary path), user_id:", userInfo.user_id);
+  }
 
   await sendMessage(chatId, stripMarkdown(summary));
   await sendMessage(chatId, `🔗 完整功能（翻譯 / 語氣分析 / 下載 Word/PDF）：\n${APP_URL}`);
@@ -413,7 +419,7 @@ async function processTranscribe(
   const normalized = normalizeDiarization(transcript);
   const summaryWrap = `# 📋 純文字稿\n\n**來源**: Telegram ${kind}（${durationSec}s）\n\n---\n\n${normalized}`;
   const ext = kind === "audio" ? "mp3" : "ogg";
-  await supabase.from("meetings").insert({
+  const { error: insErr } = await supabase.from("meetings").insert({
     user_id: userInfo.user_id,
     summary: summaryWrap,
     transcript: normalized,
@@ -422,6 +428,11 @@ async function processTranscribe(
     duration_seconds: durationSec,
     audio_filename: `telegram-${kind}-${Date.now()}.${ext}`,
   });
+  if (insErr) {
+    console.error("Meetings insert failed (transcribe path):", JSON.stringify(insErr));
+  } else {
+    console.log("Meetings insert OK (transcribe path), user_id:", userInfo.user_id);
+  }
 
   await sendMessage(chatId, "✅ 轉錄完成：\n\n" + stripMarkdown(normalized));
   await sendMessage(chatId, `🔗 用 AI 整理紀要 / 翻譯 / 下載：\n${APP_URL}`);

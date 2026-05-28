@@ -9,7 +9,8 @@ from google import genai
 from google.genai import types
 
 GEMINI_MODEL = "gemini-2.5-flash"
-FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"]
+# gemini-2.0-flash 對新 API key 唔再開放 (returns 404 NOT_FOUND)，所以由 fallback chain 拎走
+FALLBACK_MODELS = ["gemini-2.5-flash-lite", "gemini-2.5-pro"]
 INLINE_MAX_BYTES = 18 * 1024 * 1024   # < 20MB Gemini inline limit, leave headroom
 
 
