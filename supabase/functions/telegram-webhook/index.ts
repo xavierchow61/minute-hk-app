@@ -26,7 +26,7 @@ const TG_FILE_API = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}`;
 const GEMINI_URL =
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
-const APP_URL = "https://minute-hk-app-uat.streamlit.app";
+const APP_URL = "https://minute-hk-app.streamlit.app";
 const MAX_AUDIO_SECONDS = 300;
 
 const FREE_MONTHLY = 6000, FREE_DAILY = 900;
