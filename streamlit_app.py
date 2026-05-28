@@ -14,6 +14,7 @@ import cloud_stripe
 import dashboard
 import db
 import jargon_packs
+import telegram_integration as telegram_send
 
 
 @st.cache_data(ttl=1800, show_spinner=False)  # 30 分鐘 cache
@@ -730,14 +731,128 @@ st.markdown("""
 
 auth.init_session()
 
-# ============ Handle Stripe redirect ============
+# ============ JS shim: 將 URL hash 轉做 query params ============
+# Supabase password recovery 嘅 default implicit flow 會 redirect 去
+# {app}?type=recovery#access_token=xxx&refresh_token=yyy&type=recovery&...
+# Hash fragment 服務器讀唔到, 所以要 JS 偵測 hash + reload 成 query param.
+_components.html(
+    """
+    <script>
+    (function() {
+      try {
+        const parent = window.top;
+        if (!parent || !parent.location || !parent.location.hash) return;
+        const hash = parent.location.hash.substring(1);
+        if (!hash.includes('type=recovery') && !hash.includes('access_token')) return;
+        const hashParams = new URLSearchParams(hash);
+        const url = new URL(parent.location.href);
+        // copy 所有 hash params 落 query string
+        hashParams.forEach((value, key) => {
+            url.searchParams.set(key, value);
+        });
+        url.hash = '';
+        parent.location.replace(url.toString());
+      } catch (e) {
+        console.error('Hash → query conversion failed:', e);
+      }
+    })();
+    </script>
+    """,
+    height=0,
+)
+
+# ============ Handle URL query params (Stripe redirect / password recovery) ============
 qp = st.query_params
+
+# Password recovery — handle both PKCE (?code=...) and implicit (?access_token=...)
+# 兩種 flow 都 redirect 之後 type=recovery 喺 query (JS shim 已 normalize)
+if qp.get("type") == "recovery" and ("code" in qp or "access_token" in qp):
+    if "code" in qp:
+        # PKCE flow
+        code_val = qp["code"]
+        st.query_params.clear()
+        ok, info = auth.exchange_recovery_code(code_val)
+    else:
+        # Implicit flow (轉換自 hash fragment)
+        access = qp["access_token"]
+        refresh = qp.get("refresh_token", "")
+        st.query_params.clear()
+        ok, info = auth.set_recovery_session(access, refresh)
+    if ok:
+        st.session_state["_recovery_mode"] = True
+        st.session_state["_recovery_email"] = info
+    else:
+        st.session_state["_recovery_error"] = info
+    st.rerun()
+
+# 已過期 / 無效 link 嘅 error
+if "_recovery_error" in st.session_state:
+    st.error(f"🔑 重設密碼 link 失敗：{st.session_state.pop('_recovery_error')}")
+
+# Stripe redirect
 if qp.get("upgrade") == "success":
     st.toast("🎉 升級成功！可能要幾分鐘 sync。", icon="✅")
     st.query_params.clear()
 elif qp.get("upgrade") == "cancel":
     st.toast("已取消升級", icon="ℹ️")
     st.query_params.clear()
+
+# ============ Recovery mode: 強制設新密碼 ============
+if st.session_state.get("_recovery_mode"):
+    _auth_l, auth_col, _auth_r = st.columns([1, 2, 1])
+    with auth_col:
+        st.markdown(
+            f"""
+            <div style='text-align:center;margin:0.5rem 0 0.8rem 0;'>
+                <img src='{LOGO_DATA_URI}' alt='Minute.hk' style='width:48px;height:48px;'/>
+                <h2 style='margin:0.4rem 0 0 0;font-size:1.4rem;'>
+                    🔑 設定新密碼
+                </h2>
+                <p style='color:#64748b;margin:0.2rem 0 0 0;font-size:0.82rem;'>
+                    為 <strong>{st.session_state.get('_recovery_email', '')}</strong> 設定新密碼
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        with st.form("recovery_password_form"):
+            new_pw = st.text_input(
+                "新密碼",
+                type="password",
+                placeholder="新密碼（至少 6 位）",
+                key="rec_new_pw",
+                label_visibility="collapsed",
+            )
+            new_pw2 = st.text_input(
+                "確認新密碼",
+                type="password",
+                placeholder="再輸入一次確認",
+                key="rec_new_pw2",
+                label_visibility="collapsed",
+            )
+            submit = st.form_submit_button(
+                "✅ 設定新密碼", type="primary", use_container_width=True
+            )
+            if submit:
+                if not new_pw or not new_pw2:
+                    st.error("請輸入兩次新密碼")
+                elif new_pw != new_pw2:
+                    st.error("兩次密碼唔同")
+                else:
+                    ok, msg = auth.update_password(new_pw)
+                    if ok:
+                        # 清 recovery state + 登出 session（強制用戶用新密碼重新登入）
+                        st.session_state.pop("_recovery_mode", None)
+                        st.session_state.pop("_recovery_email", None)
+                        auth.logout()
+                        st.success(msg)
+                        st.balloons()
+                        st.toast("✅ 密碼已更新，請用新密碼登入", icon="🔑")
+                        time.sleep(2)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+    st.stop()
 
 # ============ Auth UI (if not logged in) ============
 if not auth.is_logged_in():
@@ -1146,13 +1261,72 @@ if not auth.is_logged_in():
                                 # 不 regen captcha - signup 失敗（例如 email 已註冊）唔好為難用戶
 
         with tab_reset:
-            with st.form("reset_form"):
-                email = st.text_input("Email", key="rp_email",
-                                      placeholder="你註冊嘅 email", label_visibility="collapsed")
-                submit = st.form_submit_button("📧 寄重設密碼 link", use_container_width=True)
-                if submit and email:
-                    ok, msg = auth.reset_password(email)
-                    (st.success if ok else st.error)(msg)
+            # 新 flow: 6 位 OTP code (取代 magic link — 完全避開 URL hash 問題)
+            # Step 1: 用戶輸 email → app send 6 位 code
+            # Step 2: 用戶 paste code → verify → 即時登入
+            # Step 3: 登入後喺 ⚙️設定 → 🔑 改密碼 改新嘅
+            st.caption(
+                "📧 Email 收 6 位驗證碼登入，登入後喺 ⚙️ 設定 → 🔑 改密碼"
+            )
+
+            _otp_sent_email = st.session_state.get("_otp_sent_to")
+
+            if not _otp_sent_email:
+                # Step 1: enter email
+                with st.form("otp_email_form"):
+                    email_otp = st.text_input(
+                        "Email",
+                        key="rp_email",
+                        placeholder="你註冊嘅 email",
+                        label_visibility="collapsed",
+                    )
+                    submit_otp_email = st.form_submit_button(
+                        "📧 寄 6 位驗證碼", use_container_width=True
+                    )
+                    if submit_otp_email and email_otp:
+                        ok, msg = auth.send_otp_code(email_otp)
+                        if ok:
+                            st.session_state["_otp_sent_to"] = email_otp.strip()
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+            else:
+                # Step 2: enter OTP code
+                st.info(
+                    f"📨 驗證碼已 send 去 **{_otp_sent_email}** · 5 分鐘內有效"
+                )
+                with st.form("otp_verify_form"):
+                    otp_code = st.text_input(
+                        "6 位驗證碼",
+                        max_chars=6,
+                        placeholder="例：123456",
+                        key="rp_otp_code",
+                        label_visibility="collapsed",
+                    )
+                    verify_otp_btn = st.form_submit_button(
+                        "✅ 驗證 + 登入", type="primary", use_container_width=True
+                    )
+                    if verify_otp_btn:
+                        ok, msg = auth.verify_otp_code(_otp_sent_email, otp_code)
+                        if ok:
+                            st.session_state.pop("_otp_sent_to", None)
+                            st.session_state["_post_login_msg"] = (
+                                "🔑 登入成功！記得去「⚙️ 設定」嘅 🔑 改密碼 改返新嘅。"
+                            )
+                            st.success(msg)
+                            st.balloons()
+                            time.sleep(1.2)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+                if st.button(
+                    "🔄 用另一個 email / 重新申請",
+                    key="rp_restart",
+                    use_container_width=True,
+                ):
+                    st.session_state.pop("_otp_sent_to", None)
+                    st.rerun()
 
         st.markdown(
             "<p style='text-align:center;font-size:0.78rem;color:#94a3b8;margin-top:1rem;'>"
@@ -1165,6 +1339,10 @@ if not auth.is_logged_in():
 
 # ============ Logged in - Main App ============
 user = auth.get_user()
+
+# OTP login 後 surfaces 「記得改密碼」嘅 prompt
+if "_post_login_msg" in st.session_state:
+    st.info(st.session_state.pop("_post_login_msg"))
 plan = db.get_user_plan(user["id"])
 plan_emoji = {"free": "🆓", "pro": "⭐", "team": "👥"}.get(plan, "🆓")
 
@@ -2471,6 +2649,35 @@ with tab_new:
                              help="⭐ 升級 Pro 解鎖 PDF 匯出"):
                     show_pro_locked_toast("PDF 匯出")
 
+        # === 📤 Send to Telegram ===
+        _tg_chat = (user_settings.get("telegram_chat_id") or "").strip()
+        if telegram_send.is_configured():
+            if _tg_chat:
+                if st.button(
+                    "📤 Send 紀要落 Telegram",
+                    key="btn_send_telegram_main",
+                    use_container_width=True,
+                    help=f"推俾你嘅 Telegram chat ({_tg_chat[:6]}...)",
+                ):
+                    _meeting_label = st.session_state.get("last_meeting_name", "會議")
+                    ok, msg = telegram_send.send_summary(
+                        _tg_chat,
+                        st.session_state.last_summary,
+                        header=f"📝 Minute.hk · {_meeting_label}",
+                    )
+                    if ok:
+                        st.toast(f"✅ {msg}", icon="📤")
+                    else:
+                        st.error(f"Telegram send 失敗：{msg}")
+            else:
+                if st.button(
+                    "📤 Send 落 Telegram（要先連接）",
+                    key="btn_send_telegram_unconnected",
+                    use_container_width=True,
+                    help="去 ⚙️ 設定 → 🔗 連接 Telegram",
+                ):
+                    st.toast("ℹ️ 去 ⚙️ 設定 → 🔗 連接 Telegram 先", icon="🔗")
+
         # === 🤖 更多 AI 分析（次要 action，預設摺埋）===
         # 已生成過結果就自動展開，等用戶見到 button 可以再 generate
         _ai_used = bool(
@@ -3230,7 +3437,125 @@ with tab_settings:
     # ============ Sub-tab 3: 連接 Telegram ============
     with sub_tab_tg:
         st.caption("連接你嘅 Telegram，AI 整理完會議紀要可以一鍵推送到你嘅 chat。")
-        st.info("🚧 呢個功能仲喺測試中，暫時未喺正式版開放。")
+        if not telegram_send.is_configured():
+            st.caption("⚠️ 管理員仲未設定 bot token，呢個功能暫時未開放。")
+        else:
+            _current_chat_id = (current_settings.get("telegram_chat_id") or "").strip()
+            if _current_chat_id:
+                st.success(f"✅ 已連接 · chat_id: `{_current_chat_id}`")
+                tg_col_test, tg_col_unlink = st.columns([2, 1])
+                with tg_col_test:
+                    if st.button(
+                        "🧪 試發送測試訊息",
+                        key="tg_test",
+                        use_container_width=True,
+                    ):
+                        ok, msg = telegram_send.send_message(
+                            _current_chat_id,
+                            "👋 你好！\n你嘅 Telegram 已成功連接到 Minute.hk。",
+                        )
+                        if ok:
+                            st.toast(f"✅ {msg}", icon="📤")
+                        else:
+                            st.error(msg)
+                with tg_col_unlink:
+                    if st.button(
+                        "🔌 解除連接",
+                        key="tg_unlink",
+                        use_container_width=True,
+                    ):
+                        try:
+                            db.update_user_settings(user["id"], telegram_chat_id="")
+                            st.toast("已解除連接 Telegram", icon="🔌")
+                            st.rerun(scope="fragment")
+                        except Exception as e:
+                            st.error(f"解除失敗：{e}")
+            else:
+                try:
+                    _bot_username = (st.secrets.get("TELEGRAM_BOT_USERNAME") or "").strip()
+                except Exception:
+                    _bot_username = ""
+                if _bot_username:
+                    _code_key = "_tg_link_code"
+                    _code_time_key = "_tg_link_code_time"
+                    _expired = False
+                    if _code_key in st.session_state and _code_time_key in st.session_state:
+                        import time as _t
+                        if _t.time() - st.session_state[_code_time_key] > 600:
+                            _expired = True
+                    if _code_key not in st.session_state or _expired:
+                        try:
+                            st.session_state[_code_key] = db.create_telegram_link_code(
+                                user["id"]
+                            )
+                            import time as _t
+                            st.session_state[_code_time_key] = _t.time()
+                        except Exception as e:
+                            st.error(f"生成連接碼失敗：{e}")
+                            st.session_state.pop(_code_key, None)
+
+                    _code = st.session_state.get(_code_key)
+                    if _code:
+                        _bot_url = f"https://t.me/{_bot_username}?start={_code}"
+                        st.markdown(
+                            "**👉 一鍵連接（推薦）**\n\n"
+                            f"撳下面個連結，喺 Telegram 按 **START** 即時連接：\n\n"
+                            f"### 🔗 [t.me/{_bot_username}?start={_code}]({_bot_url})\n\n"
+                            f"連接碼：`{_code}`（10 分鐘內有效）"
+                        )
+                        tg_refresh_col1, tg_refresh_col2 = st.columns([1, 1])
+                        with tg_refresh_col1:
+                            if st.button("🔄 我已連接，重新整理", key="tg_refresh_link", use_container_width=True):
+                                st.session_state.pop(_code_key, None)
+                                st.session_state.pop(_code_time_key, None)
+                                st.rerun(scope="fragment")
+                        with tg_refresh_col2:
+                            if st.button("♻️ 重新生成連接碼", key="tg_regen_code", use_container_width=True):
+                                st.session_state.pop(_code_key, None)
+                                st.session_state.pop(_code_time_key, None)
+                                st.rerun(scope="fragment")
+
+                _has_1click = bool(_bot_username)
+                with st.expander(
+                    "⚙️ 進階：手動貼上 chat ID" if _has_1click else "📲 連接 Telegram",
+                    expanded=not _has_1click,
+                ):
+                    st.caption(
+                        "1. 開 Telegram，搜尋 **@userinfobot**\n"
+                        "2. 按 START 或輸入 `/start`\n"
+                        "3. Bot 回覆訊息會包含 `Id: 123456789` — 複製個數字\n"
+                        "4. 仲要：搜尋你個 Minute.hk bot → 按 START（一次性）\n"
+                        "5. 貼上個 ID 落下面"
+                    )
+                    with st.form("telegram_connect_manual_form"):
+                        new_chat_id = st.text_input(
+                            "你嘅 Telegram chat ID（純數字）",
+                            placeholder="例: 123456789",
+                            key="tg_chat_id_input",
+                        )
+                        tg_connect = st.form_submit_button(
+                            "🔗 手動連接", use_container_width=True
+                        )
+                        if tg_connect:
+                            cleaned = (new_chat_id or "").strip()
+                            if not cleaned.lstrip("-").isdigit():
+                                st.error("Chat ID 應該係純數字")
+                            else:
+                                ok, msg = telegram_send.send_message(
+                                    cleaned,
+                                    "🎉 連接成功！之後 Minute.hk 嘅紀要可以一鍵推送過嚟。",
+                                )
+                                if ok:
+                                    try:
+                                        db.update_user_settings(
+                                            user["id"], telegram_chat_id=cleaned
+                                        )
+                                        st.toast("✅ 已連接", icon="🔗")
+                                        st.rerun(scope="fragment")
+                                    except Exception as e:
+                                        st.error(f"儲存失敗：{e}")
+                                else:
+                                    st.error(f"連接測試失敗：{msg}")
 
     # ============ Sub-tab 4: 改密碼 ============
     with sub_tab_pw:

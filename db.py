@@ -227,11 +227,14 @@ SUMMARY_LENGTHS = {
 
 @st.cache_data(ttl=60, show_spinner=False)
 def get_user_settings(user_id: str) -> dict:
-    """攞用戶設定（jargon、industry、length 等） (cached 60s)"""
+    """攞用戶設定（jargon、industry、length、telegram_chat_id 等） (cached 60s)"""
     sb = get_supabase()
     result = (
         sb.table("user_plans")
-        .select("company_name, industry, jargon, summary_length, onboarding_dismissed")
+        .select(
+            "company_name, industry, jargon, summary_length, "
+            "onboarding_dismissed, telegram_chat_id"
+        )
         .eq("user_id", user_id)
         .limit(1)
         .execute()
@@ -244,6 +247,7 @@ def get_user_settings(user_id: str) -> dict:
             "jargon": row.get("jargon") or "",
             "summary_length": row.get("summary_length") or "medium",
             "onboarding_dismissed": bool(row.get("onboarding_dismissed") or False),
+            "telegram_chat_id": row.get("telegram_chat_id") or "",
         }
     return {
         "company_name": "",
@@ -251,6 +255,7 @@ def get_user_settings(user_id: str) -> dict:
         "jargon": "",
         "summary_length": "medium",
         "onboarding_dismissed": False,
+        "telegram_chat_id": "",
     }
 
 
@@ -312,12 +317,36 @@ def claim_invite_code_and_upgrade(code: str, user_id: str = None, target_plan: s
         return False, f"系統錯誤：{e}"
 
 
+def create_telegram_link_code(user_id: str, ttl_minutes: int = 10) -> str:
+    """生成一條一次性 Telegram 連接碼，10 分鐘有效。
+
+    User 撳「連接 Telegram」嘅 button → 我哋 generate 個 6 位 code → 插落
+    telegram_link_codes table → 用戶 click https://t.me/Bot?start=<code>
+    → bot webhook (Edge Function) 用個 code 揾返 user_id → 設 chat_id 落
+    user_plans。
+    """
+    import secrets as _secrets
+    import string as _string
+    code = "".join(
+        _secrets.choice(_string.ascii_uppercase + _string.digits)
+        for _ in range(6)
+    )
+    expires = datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes)
+    sb = get_supabase()
+    sb.table("telegram_link_codes").insert({
+        "code": code,
+        "user_id": user_id,
+        "expires_at": expires.isoformat(),
+    }).execute()
+    return code
+
+
 def update_user_settings(user_id: str, **kwargs) -> None:
     """Update user 設定。允許 fields: company_name, industry, jargon,
-    summary_length, onboarding_dismissed"""
+    summary_length, onboarding_dismissed, telegram_chat_id"""
     allowed = {
         "company_name", "industry", "jargon", "summary_length",
-        "onboarding_dismissed",
+        "onboarding_dismissed", "telegram_chat_id",
     }
     update_data = {k: v for k, v in kwargs.items() if k in allowed}
     if not update_data:
@@ -393,9 +422,13 @@ def get_summaries_for_wordcloud(user_id: str) -> str:
     return "\n\n".join(m.get("summary", "") for m in (result.data or []))
 
 
-@st.cache_data(ttl=20, show_spinner=False)
+@st.cache_data(ttl=5, show_spinner=False)
 def get_monthly_usage_seconds(user_id: str) -> float:
-    """Returns total seconds processed this calendar month (cached 20s).
+    """Returns total seconds processed this calendar month (cached 5s).
+
+    短 TTL = web app 用戶可以快啲 see Telegram bot 嘅 changes (因為 Edge
+    Function 唔可以直接 invalidate Python in-memory cache, 只有 TTL 過期
+    先見到變化). 5s 對 DB load 影響微 (每用戶 ~12 queries / min).
 
     ⚠️ **故意唔 filter deleted_at**：呢個係 quota 計算，soft-deleted
     嘅 meeting 一樣要計入用戶今個月用咗幾多 (防止刷額度 -- delete 完
@@ -415,11 +448,13 @@ def get_monthly_usage_seconds(user_id: str) -> float:
     return sum(m.get("duration_seconds", 0) or 0 for m in (result.data or []))
 
 
-@st.cache_data(ttl=20, show_spinner=False)
+@st.cache_data(ttl=5, show_spinner=False)
 def get_daily_usage_seconds(user_id: str) -> float:
-    """Returns total seconds processed today (cached 20s).
+    """Returns total seconds processed today (cached 5s).
 
-    同 get_monthly_usage_seconds：故意計埋 soft-deleted (見上面註解).
+    同 get_monthly_usage_seconds：故意計埋 soft-deleted (見上面註解);
+    TTL 短啲 (5s) 為咗 Telegram bot save meeting 之後 web app 能夠
+    快啲 see 到 counter 更新.
     """
     sb = get_supabase()
     now = datetime.now(timezone.utc)
