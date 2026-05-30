@@ -20,7 +20,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!;
 
-const GEMINI_MODEL = "gemini-2.5-pro";  // Flash family 全線 overload 緊, pro quota 鬆 + 質素更高
+const GEMINI_MODEL = "gemini-2.5-flash";  // 配合 web app 嘅 primary model — flash 已恢復
 const TG_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 const TG_FILE_API = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}`;
 const GEMINI_URL =
