@@ -457,6 +457,16 @@ async function handleStartCommand(chatId: number, text: string): Promise<void> {
   if (linkRow.used_at) { await sendMessage(chatId, "❌ 呢個連接碼已被使用過。"); return; }
   if (new Date(linkRow.expires_at) < new Date()) { await sendMessage(chatId, "❌ 連接碼已過期。"); return; }
 
+  // SECURITY: evict any prior owner of this chat_id BEFORE setting new binding.
+  // Without this clear, two user_plans rows could end up with the same
+  // telegram_chat_id, letting the previous owner keep receiving the new
+  // user's pushed summaries (or breaking lookupUserByChat's maybeSingle).
+  await supabase
+    .from("user_plans")
+    .update({ telegram_chat_id: null })
+    .eq("telegram_chat_id", String(chatId))
+    .neq("user_id", linkRow.user_id);
+
   await supabase.from("user_plans").update({ telegram_chat_id: String(chatId) }).eq("user_id", linkRow.user_id);
   await supabase.from("telegram_link_codes").update({ used_at: new Date().toISOString() }).eq("code", code);
 
@@ -574,10 +584,10 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
   const mode = match[1]; // s | t
   const pendingId = parseInt(match[2], 10);
 
-  // Lookup pending
+  // Lookup pending (must include chat_id for cross-chat verification)
   const { data: pending } = await supabase
     .from("telegram_pending_voice")
-    .select("user_id, file_id, duration_sec, kind, expires_at")
+    .select("user_id, chat_id, file_id, duration_sec, kind, expires_at")
     .eq("id", pendingId)
     .maybeSingle();
 
@@ -587,6 +597,17 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
   }
 
   if (!pending) {
+    await sendMessage(chatId, "❌ 揾唔到呢條錄音，可能已 process 過 / 過期。請重新 send voice。");
+    return;
+  }
+  // SECURITY: callback must come from the same chat that owns the pending row.
+  // Without this check, a malicious chat could enumerate bigserial ids and
+  // exfiltrate other users' voice content by tapping "s:<id>".
+  if (String(pending.chat_id) !== String(chatId)) {
+    console.warn(
+      `Cross-chat callback rejected: pending.chat_id=${pending.chat_id} ` +
+        `but callback chat_id=${chatId}, pendingId=${pendingId}`,
+    );
     await sendMessage(chatId, "❌ 揾唔到呢條錄音，可能已 process 過 / 過期。請重新 send voice。");
     return;
   }
@@ -617,8 +638,34 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
 // ============================================================
 // Main Deno serve handler
 // ============================================================
+// SECURITY: Telegram sends X-Telegram-Bot-Api-Secret-Token header on each
+// webhook POST iff we registered the bot's webhook with secret_token=<value>.
+// Function deploys with --no-verify-jwt (Telegram can't send JWT), so without
+// this check anyone who knows the function URL could POST forged updates and
+// impersonate any user / drain quota / hijack /start codes.
+//
+// To enable: (1) set TELEGRAM_WEBHOOK_SECRET in Supabase Edge Function secrets
+// to a long random string, (2) re-register webhook with the SAME secret_token
+// via Bot API setWebhook. If secret env var is unset, the check is skipped
+// (graceful so old deploys keep working — but emits a warning log).
+const TELEGRAM_WEBHOOK_SECRET = Deno.env.get("TELEGRAM_WEBHOOK_SECRET");
+
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return new Response("ok");
+
+  // Verify the request really came from Telegram (not a forged caller)
+  if (TELEGRAM_WEBHOOK_SECRET) {
+    const presented = req.headers.get("X-Telegram-Bot-Api-Secret-Token");
+    if (presented !== TELEGRAM_WEBHOOK_SECRET) {
+      console.warn("Rejected webhook POST: invalid or missing secret_token header");
+      return new Response("forbidden", { status: 403 });
+    }
+  } else {
+    console.warn(
+      "TELEGRAM_WEBHOOK_SECRET is not set — webhook is UNAUTHENTICATED. " +
+        "Set the secret + re-register the webhook with the same secret_token.",
+    );
+  }
 
   let update: any;
   try {
